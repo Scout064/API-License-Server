@@ -14,7 +14,7 @@ class LicenseORM(Base):
     __tablename__ = "licenses"
 
     id = Column(Integer, primary_key=True, index=True)
-    license_key = Column(String(64), unique=True, nullable=False, doc="License key in format XXXX-XXXX-XXXX-XXXX")
+    key = Column("license_key", String(64), unique=True, nullable=False, doc="License key in format XXXX-XXXX-XXXX-XXXX")
     client_id = Column(Integer, nullable=True, doc="Reference to client id")
     status = Column(Enum("active", "revoked"), default="active", doc="License status")
     created_at = Column(DateTime, default=datetime.utcnow, doc="Timestamp when license was created")
@@ -36,7 +36,7 @@ class ClientORM(Base):
 
 # License Schemas
 class LicenseBase(BaseModel):
-    license_key: str = Field(..., description="License key in format XXXX-XXXX-XXXX-XXXX")
+    key: str = Field(..., description="License key in format XXXX-XXXX-XXXX-XXXX")
     status: str = Field(..., description="License status: active or revoked")
     client_id: Optional[int] = Field(None, description="ID of the client associated with the license")
     expires_at: Optional[datetime] = Field(None, description="Expiration date of the license")
@@ -45,7 +45,7 @@ class LicenseCreate(LicenseBase):
     pass
 
 class LicenseUpdate(BaseModel):
-    license_key: Optional[str] = Field(None, description="Updated license key")
+    key: Optional[str] = Field(None, description="Updated license key")
     status: Optional[str] = Field(None, description="Updated status: active or revoked")
     client_id: Optional[int] = Field(None, description="Updated client id")
     expires_at: Optional[datetime] = Field(None, description="Updated expiration date")
