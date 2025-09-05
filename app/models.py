@@ -1,29 +1,57 @@
-from pydantic import BaseModel
 from datetime import datetime
-
-# --- Request Models ---
-class LicenseRequest(BaseModel):
-    license_key: str
-
-class LicenseCreateRequest(BaseModel):
-    user_id: int
-    product_id: int
-    expires_at: datetime  # ISO 8601 date string
-
-class LicenseRevokeRequest(BaseModel):
-    license_key: str
+from typing import Optional
+from pydantic import BaseModel, EmailStr
 
 
-# --- Response Models ---
-class LicenseValidationResponse(BaseModel):
-    license_key: str
-    valid: bool
+# ----------------------------
+# License Schemas
+# ----------------------------
 
-class LicenseCreateResponse(BaseModel):
+class LicenseBase(BaseModel):
+    key: str
+    status: str
+    expires_at: Optional[datetime] = None
+    client_id: Optional[int] = None
+
+
+class LicenseCreate(LicenseBase):
+    pass
+
+
+class LicenseUpdate(BaseModel):
+    key: Optional[str] = None
+    status: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    client_id: Optional[int] = None
+
+
+class License(LicenseBase):
     id: int
-    license_key: str
-    status: str
 
-class LicenseRevokeResponse(BaseModel):
-    license_key: str
-    status: str
+    class Config:
+        orm_mode = True
+
+
+# ----------------------------
+# Client Schemas
+# ----------------------------
+
+class ClientBase(BaseModel):
+    name: str
+    email: EmailStr
+
+
+class ClientCreate(ClientBase):
+    pass
+
+
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+
+class Client(ClientBase):
+    id: int
+
+    class Config:
+        orm_mode = True
