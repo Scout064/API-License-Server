@@ -7,6 +7,7 @@ from typing import List
 from app.database import get_db   # <-- make sure this exists
 from app import models            # ORM models
 from app import models as schemas # Pydantic schemas are in models.py
+from app.auth import get_current_user   # <-- wichtig: Auth-Dependency
 
 router = APIRouter()
 
