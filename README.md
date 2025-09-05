@@ -54,7 +54,7 @@ chmod +x install.sh
 7. Sets up Python virtual environment (`lic/`) and installs dependencies
 8. Configures selected deployment:
 
-   * Apache2 → creates vhost, enables site, reloads Apache
+   * Apache2 → creates vhost, enables site, reloads Apache (change the Server URL in the vhost File)
    * Uvicorn → checks if port 8000 is free, switches to 8100 if needed, sets up systemd service
 
 ---
