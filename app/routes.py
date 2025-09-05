@@ -18,15 +18,21 @@ def generate_license_key() -> str:
     parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(4)]
     return '-'.join(parts)
 
+# Regex pattern for license key: XXXX-XXXX-XXXX-XXXX
+LICENSE_KEY_REGEX = r"^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+
+def generate_license_key() -> str:
+    """Generates a license key in the format XXXX-XXXX-XXXX-XXXX"""
+    parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(4)]
+    return '-'.join(parts)
+
 # -------------------
 # Client Endpoints
 # -------------------
 
 @router.post("/clients", response_model=schemas.Client)
 def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
-    """
-    Create a new client.
-    """
+    """Create a new client."""
     existing = db.query(models.ClientORM).filter(models.ClientORM.email == client.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Client with this email already exists")
@@ -39,16 +45,12 @@ def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
 
 @router.get("/clients", response_model=List[schemas.Client])
 def list_clients(db: Session = Depends(get_db)):
-    """
-    List all clients.
-    """
+    """List all clients."""
     return db.query(models.ClientORM).all()
 
 @router.get("/clients/{client_id}", response_model=schemas.Client)
 def get_client(client_id: int, db: Session = Depends(get_db)):
-    """
-    Get client by ID.
-    """
+    """Get client by ID."""
     client = db.query(models.ClientORM).filter(models.ClientORM.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -60,9 +62,7 @@ def get_client(client_id: int, db: Session = Depends(get_db)):
 
 @router.post("/licenses/generate", response_model=schemas.License)
 def create_license(client_id: int, db: Session = Depends(get_db)):
-    """
-    Generate a new license key for a client.
-    """
+    """Generate a new license key for a client."""
     client = db.query(models.ClientORM).filter(models.ClientORM.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -88,9 +88,7 @@ def get_license(
     license_key: str = Path(..., regex=LICENSE_KEY_REGEX),
     db: Session = Depends(get_db)
 ):
-    """
-    Get license info by license key.
-    """
+    """Get license info by license key."""
     license_obj = db.query(models.LicenseORM).filter(models.LicenseORM.key == license_key).first()
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found")
@@ -101,9 +99,7 @@ def revoke_license(
     license_key: str = Path(..., regex=LICENSE_KEY_REGEX),
     db: Session = Depends(get_db)
 ):
-    """
-    Revoke a license by key.
-    """
+    """Revoke a license by key."""
     license_obj = db.query(models.LicenseORM).filter(models.LicenseORM.key == license_key).first()
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found")
