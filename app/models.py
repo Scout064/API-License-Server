@@ -1,14 +1,13 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Column, Integer, String, Enum, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Enum, DateTime
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
-
 # ----------------------------
-# SQLAlchemy ORM
+# SQLAlchemy ORM Models
 # ----------------------------
 
 class LicenseORM(Base):
@@ -17,36 +16,60 @@ class LicenseORM(Base):
     id = Column(Integer, primary_key=True, index=True)
     license_key = Column(String(64), unique=True, nullable=False)
     user_id = Column(String(64), nullable=True)
-    status = Column(Enum('active', 'revoked', name="license_status"), default='active', nullable=False)
-    created_at = Column(TIMESTAMP, nullable=False, server_default='CURRENT_TIMESTAMP')
-    revoked_at = Column(TIMESTAMP, nullable=True)
+    status = Column(Enum("active", "revoked"), default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class ClientORM(Base):
+    __tablename__ = "clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(128), nullable=False)
+    email = Column(String(128), nullable=False, unique=True)
 
 
 # ----------------------------
 # Pydantic Schemas
 # ----------------------------
 
+# License Schemas
 class LicenseBase(BaseModel):
-    license_key: str
-    user_id: Optional[str] = None
-    status: Optional[str] = 'active'
-    revoked_at: Optional[datetime] = None
-
+    key: str
+    status: str
+    expires_at: Optional[datetime] = None
+    client_id: Optional[str] = None
 
 class LicenseCreate(LicenseBase):
     pass
 
-
 class LicenseUpdate(BaseModel):
-    license_key: Optional[str] = None
-    user_id: Optional[str] = None
+    key: Optional[str] = None
     status: Optional[str] = None
-    revoked_at: Optional[datetime] = None
-
+    expires_at: Optional[datetime] = None
+    client_id: Optional[str] = None
 
 class License(LicenseBase):
     id: int
-    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+# Client Schemas
+class ClientBase(BaseModel):
+    name: str
+    email: EmailStr
+
+class ClientCreate(ClientBase):
+    pass
+
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+class Client(ClientBase):
+    id: int
 
     class Config:
         orm_mode = True
