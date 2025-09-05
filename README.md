@@ -1,8 +1,7 @@
 # 🔑 License Server (API-driven)
 
-A simple **API-driven license server** built with **FastAPI**, backed by **MariaDB**, with two deployment options:
+A simple **API-driven license server** built with **FastAPI**, backed by **MariaDB**, with one deployment option:
 
-* **Apache2 + mod\_wsgi** (recommended for production behind a web server)
 * **Uvicorn + systemd** (standalone FastAPI server)
 
 Includes:
@@ -16,11 +15,11 @@ Includes:
 
 ## 🚀 Features
 
-* `/auth/token` → Obtain JWT access token
-* `/licenses` → Create & list licenses (admin only)
-* `/licenses/{key}` → Get license details (admin only)
-* `/licenses/{key}/revoke` → Revoke license (admin only)
-* `/licenses/validate` → Validate license key (public)
+* `/api/clients` → List and create Clients
+* `/api/clients/{client_id}` → inquire client
+* `/api/licenses/generate` → Generate License
+* `/api/licenses/{license_key}` → inquire license status
+* `/api/licenses/{license_key}/revoke` → revoke license key
 
 Interactive docs:
 
@@ -43,18 +42,14 @@ chmod +x install.sh
 ### Installer Steps
 
 1. Prompt for **MariaDB root password**
-2. Select **deployment method**:
-
-   * `1` → Apache2 + mod\_wsgi
+2. **deployment method**:
    * `2` → Uvicorn + systemd
-3. Installs system dependencies (`python3`, `mariadb-server`, `apache2`, etc.)
+3. Installs system dependencies (`python3`, `mariadb-server`, etc.)
 4. Creates database and user in MariaDB
 5. Imports initial schema from `schema.sql`
 6. Copies app to `/var/www/license-server` and fixes ownership to `www-data:www-data`
 7. Sets up Python virtual environment (`lic/`) and installs dependencies
-8. Configures selected deployment:
-
-   * Apache2 → creates vhost, enables site, reloads Apache (change the Server URL in the vhost File)
+8. Configures deployment:
    * Uvicorn → checks if port 8000 is free, switches to 8100 if needed, sets up systemd service
 
 ---
@@ -75,21 +70,19 @@ Update environment variables in:
 
 * `install.sh` before running the script
 * `/etc/systemd/system/license-server.service` (Uvicorn)
-* `app/config.py` or directly in your FastAPI code if needed
+* `app/config.py`
 
 ---
 
 ## 🖥 Access the API
 
-* **Apache2**: `http://your-server-domain/api/docs`
-* **Uvicorn**: `http://your-server-ip:8000/docs` or `http://your-server-ip:8100/docs` if 8000 is in use
+* **Uvicorn**: `http://your-server-ip:8000/docs or .../redoc` or `http://your-server-ip:8100/docs or .../redoc` if 8000 is in use
 
 ---
 
-## 🔧 Apache2 Logs
+## 🔧 Logs
 
-* Error log: `/var/log/apache2/license-server-error.log`
-* Access log: `/var/log/apache2/license-server-access.log`
+* Error log: `journalctl -u license-server.service -f`
 
 ---
 
@@ -103,31 +96,6 @@ Update environment variables in:
 ---
 
 ## 🧪 Quick Test
-
-Obtain token:
-
-```bash
-curl -X POST http://your-server/api/auth/token \
-     -d "username=admin&password=changeme" \
-     -H "Content-Type: application/x-www-form-urlencoded"
-```
-
-Create license:
-
-```bash
-curl -X POST http://your-server/api/licenses \
-     -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"product_code":"MYAPP-PRO","owner":"customer@example.com","expires_in_days":365}'
-```
-
-Validate license:
-
-```bash
-curl -X POST http://your-server/api/licenses/validate \
-     -H "Content-Type: application/json" \
-     -d '{"key":"XXXX-XXXX-XXXX","product_code":"MYAPP-PRO"}'
-```
 
 ---
 
