@@ -11,10 +11,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, Se
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import (
-    create_engine, String, Text, DateTime, Boolean, Integer, ForeignKey, Enum, select, func
-)
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
+from sqlalchemy import create_engine, String, Text, DateTime, Boolean, Integer, ForeignKey, Enum, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -23,10 +21,13 @@ JWT_SECRET = os.getenv("JWT_SECRET", "CHANGE_ME_SUPER_SECRET")
 JWT_ALG = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))
 
-DB_URL = os.getenv("DATABASE_URL", "sqlite:///./licenses.db")
+DB_URL = os.getenv(
+    "DATABASE_URL",
+    "mysql+pymysql://license_user:strongpassword@localhost/license_db"
+)
 
 DEFAULT_ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
-DEFAULT_ADMIN_PASS = os.getenv("ADMIN_PASSWORD", "changeme")  # change immediately in prod!
+DEFAULT_ADMIN_PASS = os.getenv("ADMIN_PASSWORD", "changeme")  # change ASAP in prod!
 
 # -----------------------------------------------------------------------------
 # Database setup
@@ -57,9 +58,9 @@ class License(Base):
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # free-form metadata
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False} if DB_URL.startswith("sqlite") else {})
+engine = create_engine(DB_URL, pool_pre_ping=True)
 Base.metadata.create_all(engine)
 
 # -----------------------------------------------------------------------------
