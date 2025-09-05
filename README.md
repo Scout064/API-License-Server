@@ -15,11 +15,12 @@ Includes:
 
 ## 🚀 Features
 
-* `/api/clients` → List and create Clients
-* `/api/clients/{client_id}` → inquire client
-* `/api/licenses/generate` → Generate License
-* `/api/licenses/{license_key}` → inquire license status
-* `/api/licenses/{license_key}/revoke` → revoke license key
+* `/api/clients` → List and create Clients (Admin)
+* `/api/clients/{client_id}` → inquire client (Admin)
+* `/api/licenses/generate` → Generate License (Admin)
+* `/api/licenses/{license_key}` → inquire license status (Public)
+* `/api/licenses/{license_key}/revoke` → revoke license key (Admin)
+* `/api/login` → Login as Admin
 
 Interactive docs:
 
@@ -70,7 +71,7 @@ Update environment variables in:
 
 * `install.sh` before running the script
 * `/etc/systemd/system/license-server.service` (Uvicorn)
-* `app/config.py`
+* `app/auth.py`
 
 ---
 
