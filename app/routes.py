@@ -22,7 +22,7 @@ def generate_license_key() -> str:
 # Client Endpoints
 # -------------------
 
-@router.post("/api/clients", response_model=schemas.Client)
+@router.post("/clients", response_model=schemas.Client)
 def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
     """
     Create a new client.
@@ -37,14 +37,14 @@ def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
     db.refresh(db_client)
     return db_client
 
-@router.get("/api/clients", response_model=List[schemas.Client])
+@router.get("/clients", response_model=List[schemas.Client])
 def list_clients(db: Session = Depends(get_db)):
     """
     List all clients.
     """
     return db.query(models.ClientORM).all()
 
-@router.get("/api/clients/{client_id}", response_model=schemas.Client)
+@router.get("/clients/{client_id}", response_model=schemas.Client)
 def get_client(client_id: int, db: Session = Depends(get_db)):
     """
     Get client by ID.
@@ -58,7 +58,7 @@ def get_client(client_id: int, db: Session = Depends(get_db)):
 # License Endpoints
 # -------------------
 
-@router.post("/api/licenses/generate", response_model=schemas.License)
+@router.post("/licenses/generate", response_model=schemas.License)
 def create_license(client_id: int, db: Session = Depends(get_db)):
     """
     Generate a new license key for a client.
@@ -83,7 +83,7 @@ def create_license(client_id: int, db: Session = Depends(get_db)):
     db.refresh(new_license)
     return new_license
 
-@router.get("/api/licenses/{license_key}", response_model=schemas.License)
+@router.get("/licenses/{license_key}", response_model=schemas.License)
 def get_license(
     license_key: str = Path(..., regex=LICENSE_KEY_REGEX),
     db: Session = Depends(get_db)
@@ -96,7 +96,7 @@ def get_license(
         raise HTTPException(status_code=404, detail="License not found")
     return license_obj
 
-@router.post("/api/licenses/{license_key}/revoke", response_model=schemas.License)
+@router.post("/licenses/{license_key}/revoke", response_model=schemas.License)
 def revoke_license(
     license_key: str = Path(..., regex=LICENSE_KEY_REGEX),
     db: Session = Depends(get_db)
