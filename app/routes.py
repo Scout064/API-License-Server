@@ -1,6 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from app.database import get_db_connection
-from app.models import LicenseRequest, LicenseCreateRequest, LicenseRevokeRequest
+from app.models import (
+    LicenseRequest, LicenseCreateRequest, LicenseRevokeRequest,
+    LicenseValidationResponse, LicenseCreateResponse, LicenseRevokeResponse
+)
 
 router = APIRouter()
 
@@ -8,7 +11,8 @@ router = APIRouter()
 @router.post(
     "/licenses/validate",
     summary="Validate a license",
-    response_description="Returns whether a license is valid"
+    response_description="Returns whether a license is valid",
+    response_model=LicenseValidationResponse
 )
 async def validate_license(req: LicenseRequest):
     """
@@ -26,14 +30,15 @@ async def validate_license(req: LicenseRequest):
         raise HTTPException(status_code=404, detail="License not found")
 
     status = row[0]
-    return {"license_key": req.license_key, "valid": status == "active"}
+    return LicenseValidationResponse(license_key=req.license_key, valid=status == "active")
 
 
 # ✅ Create license
 @router.post(
     "/licenses/create",
     summary="Create a new license",
-    response_description="Returns the created license details"
+    response_description="Returns the created license details",
+    response_model=LicenseCreateResponse
 )
 async def create_license(req: LicenseCreateRequest):
     """
@@ -56,14 +61,15 @@ async def create_license(req: LicenseCreateRequest):
     row = cursor.fetchone()
     conn.close()
 
-    return {"id": row[0], "license_key": row[1], "status": "active"}
+    return LicenseCreateResponse(id=row[0], license_key=row[1], status="active")
 
 
 # ✅ Revoke license
 @router.post(
     "/licenses/revoke",
     summary="Revoke a license",
-    response_description="Returns the revoked license details"
+    response_description="Returns the revoked license details",
+    response_model=LicenseRevokeResponse
 )
 async def revoke_license(req: LicenseRevokeRequest):
     """
@@ -82,4 +88,4 @@ async def revoke_license(req: LicenseRevokeRequest):
     if affected == 0:
         raise HTTPException(status_code=404, detail="License not found")
 
-    return {"license_key": req.license_key, "status": "revoked"}
+    return LicenseRevokeResponse(license_key=req.license_key, status="revoked")
