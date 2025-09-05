@@ -132,4 +132,4 @@ curl -X POST http://your-server/api/licenses/validate \
 
 ## 📄 License
 
-MIT
+
