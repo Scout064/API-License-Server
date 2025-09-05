@@ -74,3 +74,19 @@ class Client(ClientBase):
 
     class Config:
         orm_mode = True
+
+
+# ----------------------------
+# Auth Schemas
+# ----------------------------
+
+class Token(BaseModel):
+    access_token: str = Field(..., description="JWT access token")
+    token_type: str = Field(..., description="Token type (always 'bearer')")
+
+class TokenData(BaseModel):
+    username: Optional[str] = Field(None, description="Username encoded in the JWT token")
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., description="Admin username")
+    password: str = Field(..., description="Admin password")
