@@ -4,9 +4,9 @@ import random
 import string
 from typing import List
 
-from database import get_db  # Your SQLAlchemy session dependency
-import models  # Your ORM models
-import schemas  # Pydantic schemas
+from app.database import get_db   # <-- make sure this exists
+from app import models            # ORM models
+from app import models as schemas # Pydantic schemas are in models.py
 
 router = APIRouter()
 
