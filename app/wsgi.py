@@ -1,7 +1,5 @@
 import sys
 import site  # <--- This is required
-import logging
-logging.basicConfig(stream=sys.stderr)
 
 # add project directory to sys.path
 sys.path.insert(0, "/var/www/license-server")
