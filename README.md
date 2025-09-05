@@ -73,6 +73,7 @@ ADMIN_PASSWORD=changeme
 
 Update environment variables in:
 
+* `install.sh` before running the script
 * `/etc/systemd/system/license-server.service` (Uvicorn)
 * `app/config.py` or directly in your FastAPI code if needed
 
