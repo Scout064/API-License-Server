@@ -98,6 +98,22 @@ Update environment variables in:
 
 ## 🧪 Quick Test
 
+### Auth
+
+```bash
+curl -X POST "http://your-server-ip:8000/auth/token" \
+  -d "username=admin&password=changeme" \
+  -H "Content-Type: application/x-www-form-urlencoded"
+```
+
+```Answer
+{"access_token":"<JWT_HIER>","token_type":"bearer"}
+```
+
+```Access Secured Endpoint
+curl -H "Authorization: Bearer <JWT_HIER>" http://localhost:8000/clients
+```
+
 ---
 
 ## 📄 License
