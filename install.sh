@@ -7,6 +7,8 @@ APP_DIR="/var/www/license-server"
 DB_NAME="license_db"
 DB_USER="license_user"
 DB_PASS="StrongPassword123!"
+# Generate or set JWT secret
+JWT_SECRET="SUPER_SECRET_CHANGE_ME"
 
 # Ask for MariaDB root password
 read -sp "Enter MariaDB root password: " MYSQL_ROOT_PASS
@@ -79,6 +81,11 @@ elif [ "$DEPLOY_CHOICE" == "2" ]; then
         echo "Using port $PORT for Uvicorn."
     fi
 
+    # URL-encode the database password
+    ENCODED_DB_PASS=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${DB_PASS}'))")
+    # Escape special characters in JWT_SECRET for systemd
+    ESCAPED_JWT_SECRET=$(printf '%s\n' "$JWT_SECRET" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
     # Create systemd service dynamically with selected port
     SERVICE_FILE="/etc/systemd/system/license-server.service"
     cat > $SERVICE_FILE <<EOF
@@ -90,8 +97,8 @@ After=network.target mariadb.service
 User=www-data
 Group=www-data
 WorkingDirectory=$APP_DIR
-Environment="DATABASE_URL=mysql+pymysql://${DB_USER}:${DB_PASS}@localhost/${DB_NAME}"
-Environment="JWT_SECRET=CHANGE_ME_SUPER_SECRET"
+Environment="DATABASE_URL=mysql+pymysql://${DB_USER}:${ENCODED_DB_PASS}@localhost/${DB_NAME}"
+Environment="JWT_SECRET=${ESCAPED_JWT_SECRET}"
 Environment="ADMIN_USERNAME=admin"
 Environment="ADMIN_PASSWORD=changeme"
 ExecStart=$APP_DIR/lic/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT
