@@ -18,19 +18,11 @@ def generate_license_key() -> str:
     parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(4)]
     return '-'.join(parts)
 
-# Regex pattern for license key: XXXX-XXXX-XXXX-XXXX
-LICENSE_KEY_REGEX = r"^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"
-
-def generate_license_key() -> str:
-    """Generates a license key in the format XXXX-XXXX-XXXX-XXXX"""
-    parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(4)]
-    return '-'.join(parts)
-
 # -------------------
 # Client Endpoints
 # -------------------
 
-@router.post("/clients", response_model=schemas.Client)
+@router.post("/clients", response_model=schemas.Client, dependencies=[Depends(verify_jwt)])
 def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
     """Create a new client."""
     existing = db.query(models.ClientORM).filter(models.ClientORM.email == client.email).first()
@@ -43,12 +35,12 @@ def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
     db.refresh(db_client)
     return db_client
 
-@router.get("/clients", response_model=List[schemas.Client])
+@router.get("/clients", response_model=List[schemas.Client], dependencies=[Depends(verify_jwt)])
 def list_clients(db: Session = Depends(get_db)):
     """List all clients."""
     return db.query(models.ClientORM).all()
 
-@router.get("/clients/{client_id}", response_model=schemas.Client)
+@router.get("/clients/{client_id}", response_model=schemas.Client, dependencies=[Depends(verify_jwt)])
 def get_client(client_id: int, db: Session = Depends(get_db)):
     """Get client by ID."""
     client = db.query(models.ClientORM).filter(models.ClientORM.id == client_id).first()
@@ -60,7 +52,7 @@ def get_client(client_id: int, db: Session = Depends(get_db)):
 # License Endpoints
 # -------------------
 
-@router.post("/licenses/generate", response_model=schemas.License)
+@router.post("/licenses/generate", response_model=schemas.License, dependencies=[Depends(verify_jwt)])
 def create_license(client_id: int, db: Session = Depends(get_db)):
     """Generate a new license key for a client."""
     client = db.query(models.ClientORM).filter(models.ClientORM.id == client_id).first()
@@ -94,7 +86,7 @@ def get_license(
         raise HTTPException(status_code=404, detail="License not found")
     return license_obj
 
-@router.post("/licenses/{license_key}/revoke", response_model=schemas.License)
+@router.post("/licenses/{license_key}/revoke", response_model=schemas.License, dependencies=[Depends(verify_jwt)])
 def revoke_license(
     license_key: str = Path(..., regex=LICENSE_KEY_REGEX),
     db: Session = Depends(get_db)
