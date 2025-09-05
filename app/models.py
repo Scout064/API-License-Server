@@ -14,7 +14,7 @@ class LicenseORM(Base):
     __tablename__ = "licenses"
 
     id = Column(Integer, primary_key=True, index=True)
-    key = Column("license_key", String(64), unique=True, nullable=False, doc="License key in format XXXX-XXXX-XXXX-XXXX")
+    key = Column("key", String(64), unique=True, nullable=False, doc="License key in format XXXX-XXXX-XXXX-XXXX")
     client_id = Column(Integer, nullable=True, doc="Reference to client id")
     status = Column(Enum("active", "revoked"), default="active", doc="License status")
     created_at = Column(DateTime, default=datetime.utcnow, doc="Timestamp when license was created")
