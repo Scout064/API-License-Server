@@ -1,0 +1,17 @@
+[Unit]
+Description=FastAPI License Server
+After=network.target mariadb.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/license-server
+Environment="DATABASE_URL=mysql+pymysql://license_user:strongpassword@localhost/license_db"
+Environment="JWT_SECRET=CHANGE_ME_SUPER_SECRET"
+Environment="ADMIN_USERNAME=admin"
+Environment="ADMIN_PASSWORD=changeme"
+ExecStart=/var/www/license-server/lic/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
