@@ -6,9 +6,17 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
-from app.database import get_db
-from app.auth import create_token
-from sqlalchemy.orm import Session
+
+# ---------------------------
+# Mock DB for tests
+# ---------------------------
+@pytest.fixture(autouse=True, scope="session")
+def patch_get_db():
+    # Patch get_db before importing routes
+    mock_db = AsyncMock()
+    with patch("app.routes.get_db", return_value=mock_db), \
+         patch("app.database.get_db", return_value=mock_db):
+        yield
 
 # ---------------------------
 # Patch FastAPILimiter
@@ -27,20 +35,6 @@ def patch_fastapi_limiter():
         yield
 
 # ---------------------------
-# Mock DB session
-# ---------------------------
-@pytest.fixture()
-def db_session():
-    session = AsyncMock(spec=Session)
-    yield session
-
-@pytest.fixture(autouse=True)
-def override_get_db(db_session):
-    app.dependency_overrides[get_db] = lambda: db_session
-    yield
-    app.dependency_overrides.clear()
-
-# ---------------------------
 # Test client
 # ---------------------------
 @pytest.fixture()
@@ -50,17 +44,16 @@ def client():
 # ---------------------------
 # JWT tokens
 # ---------------------------
+from app.auth import create_token
+
 @pytest.fixture()
 def admin_token():
-    return create_token(user_id=1, role="admin", secret=os.environ.get("JWT_SECRET", "testsecret123"))
+    return create_token(user_id=1, role="admin", secret="testsecret123")
 
 @pytest.fixture()
 def user_token():
-    return create_token(user_id=2, role="user", secret=os.environ.get("JWT_SECRET", "testsecret123"))
+    return create_token(user_id=2, role="user", secret="testsecret123")
 
-# ---------------------------
-# Authorization headers
-# ---------------------------
 @pytest.fixture()
 def admin_headers(admin_token):
     return {"Authorization": f"Bearer {admin_token}"}
