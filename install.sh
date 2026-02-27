@@ -1,100 +1,61 @@
 #!/bin/bash
 set -e
 
-echo "=== License Server Installer ==="
+echo "=== Secure API License Server Installer ==="
 
-APP_DIR="/var/www/license-server"
-DB_NAME="license_db"
-DB_USER="license_user"
-DB_PASS="StrongPassword123!"
-JWT_SECRET="SUPER_SECRET_CHANGE_ME"
-
-# Ask for MariaDB root password
-read -sp "Enter MariaDB root password: " MYSQL_ROOT_PASS
+read -p "Database Host: " DB_HOST
+read -p "Database Name: " DB_NAME
+read -p "Database User: " DB_USER
+read -s -p "Database Password: " DB_PASS
+echo ""
+read -s -p "JWT Secret (leave empty to auto-generate): " JWT_SECRET
 echo ""
 
-# Update system
-echo "[1/6] Updating system..."
-apt-get update -y && apt-get upgrade -y
-
-# Install system dependencies
-echo "[2/6] Installing dependencies..."
-apt-get install -y python3 python3-venv python3-pip mariadb-server
-
-# Setup MariaDB
-echo "[3/6] Configuring MariaDB..."
-systemctl enable mariadb
-systemctl start mariadb
-
-# Create database and user
-mysql -uroot -p"${MYSQL_ROOT_PASS}" <<EOF
-CREATE DATABASE IF NOT EXISTS ${DB_NAME};
-CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
-GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-
-# Apply schema
-echo "[4/6] Applying schema..."
-mysql -uroot -p"${MYSQL_ROOT_PASS}" ${DB_NAME} < schema.sql
-
-# Deploy application
-echo "[5/6] Deploying application..."
-mkdir -p $APP_DIR
-cp -r ./* $APP_DIR
-chown -R www-data:www-data $APP_DIR
-cd $APP_DIR
-
-# Setup Python environment
-echo "[6/6] Setting up Python environment..."
-python3 -m venv lic
-source lic/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-deactivate
-
-# Setup Uvicorn + systemd
-echo "[+] Configuring Uvicorn + systemd..."
-
-# Check if port 8000 is in use
-if ss -tuln | grep -q ":8000"; then
-    PORT=8100
-    echo "Port 8000 is in use. Using port $PORT for Uvicorn."
-else
-    PORT=8000
-    echo "Using port $PORT for Uvicorn."
+if [ -z "$JWT_SECRET" ]; then
+  JWT_SECRET=$(openssl rand -hex 64)
+  echo "Generated JWT secret."
 fi
 
-# URL-encode the database password
-ENCODED_DB_PASS=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${DB_PASS}'))")
-# Escape special characters in JWT_SECRET for systemd
-ESCAPED_JWT_SECRET=$(printf '%s\n' "$JWT_SECRET" | sed 's/\\/\\\\/g; s/"/\\"/g')
+echo "Creating .env file..."
 
-# Create systemd service
-SERVICE_FILE="/etc/systemd/system/license-server.service"
-cat > $SERVICE_FILE <<EOF
+cat <<EOF > .env
+DB_HOST=$DB_HOST
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASS=$DB_PASS
+JWT_SECRET=$JWT_SECRET
+EOF
+
+echo "Installing dependencies..."
+pip install -r requirements.txt
+
+echo "Applying database schema..."
+mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < schema.sql
+
+echo "Creating system user..."
+sudo useradd -r -s /bin/false licenseapi || true
+
+echo "Creating systemd service..."
+
+sudo tee /etc/systemd/system/licenseapi.service > /dev/null <<SERVICE
 [Unit]
-Description=FastAPI License Server
-After=network.target mariadb.service
+Description=License API Server
+After=network.target
 
 [Service]
-User=www-data
-Group=www-data
-WorkingDirectory=$APP_DIR
-Environment="DATABASE_URL=mysql+pymysql://${DB_USER}:${ENCODED_DB_PASS}@localhost/${DB_NAME}"
-Environment="JWT_SECRET=${ESCAPED_JWT_SECRET}"
-Environment="ADMIN_USERNAME=admin"
-Environment="ADMIN_PASSWORD=changeme"
-ExecStart=$APP_DIR/lic/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT
+User=licenseapi
+Group=licenseapi
+WorkingDirectory=$(pwd)
+ExecStart=$(which uvicorn) app.main:app --host 127.0.0.1 --port 8000
 Restart=always
+EnvironmentFile=$(pwd)/.env
 
 [Install]
 WantedBy=multi-user.target
-EOF
+SERVICE
 
-systemctl daemon-reload
-systemctl enable --now license-server
-echo "Deployment via systemd/Uvicorn complete on port $PORT!"
+sudo systemctl daemon-reload
+sudo systemctl enable licenseapi
+sudo systemctl start licenseapi
 
-echo "=== Installation complete! ==="
-echo "Access the License API via Uvicorn: http://your-server-ip:$PORT/docs"
+echo "Installation complete."

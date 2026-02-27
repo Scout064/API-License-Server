@@ -1,76 +1,140 @@
+"""
+app/models.py
+
+Database ORM models and Pydantic schemas.
+Implements secure license key hashing and generation.
+"""
+
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Column, Integer, String, Enum, DateTime
-from sqlalchemy.orm import declarative_base
+from typing import Optional, List
 
-Base = declarative_base()
+import hashlib
+import secrets
+import string
 
-# ----------------------------
-# SQLAlchemy ORM Models
-# ----------------------------
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+    Enum,
+)
+from sqlalchemy.orm import relationship # Removed declarative_base from here
+
+from pydantic import BaseModel, EmailStr
+
+# CRITICAL FIX: Import Base from database.py instead of creating a new one
+from app.database import Base 
+
+# ==========================================================
+# Utility Functions
+# ==========================================================
+
+def hash_license_key(key: str) -> str:
+    """
+    Hash license key using SHA-256.
+    Only hashed values are stored in DB.
+    """
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def generate_license_key(length: int = 16) -> str:
+    """
+    Generate secure license key formatted XXXX-XXXX-XXXX-XXXX.
+    """
+    alphabet = string.ascii_uppercase + string.digits
+    raw = "".join(secrets.choice(alphabet) for _ in range(length))
+    return "-".join(raw[i:i + 4] for i in range(0, length, 4))
+
+
+# ==========================================================
+# ORM MODELS
+# ==========================================================
+
+class ClientORM(Base):
+    """
+    Database model for API clients.
+    """
+    __tablename__ = "clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    licenses = relationship(
+        "LicenseORM",
+        back_populates="client",
+        cascade="all, delete-orphan"
+    )
+
 
 class LicenseORM(Base):
+    """
+    Database model for licenses.
+    Stores only hashed license keys.
+    """
     __tablename__ = "licenses"
 
     id = Column(Integer, primary_key=True, index=True)
-    key = Column("key", String(64), unique=True, nullable=False, doc="License key in format XXXX-XXXX-XXXX-XXXX")
-    client_id = Column(Integer, nullable=True, doc="Reference to client id")
-    status = Column(Enum("active", "revoked"), default="active", doc="License status")
-    created_at = Column(DateTime, default=datetime.utcnow, doc="Timestamp when license was created")
-    revoked_at = Column(DateTime, nullable=True, doc="Timestamp when license was revoked")
-    expires_at = Column(DateTime, nullable=True, doc="License expiration timestamp")
+    key_hash = Column(String(64), unique=True, nullable=False, index=True)
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"))
+    status = Column(
+        Enum("active", "revoked", name="license_status"),
+        default="active",
+        nullable=False,
+    )
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("ClientORM", back_populates="licenses")
 
 
-class ClientORM(Base):
-    __tablename__ = "clients"
-
-    id = Column(Integer, primary_key=True, index=True, doc="Client ID")
-    name = Column(String(128), nullable=False, doc="Client full name")
-    email = Column(String(128), nullable=False, unique=True, doc="Client email address")
-
-
-# ----------------------------
+# ==========================================================
 # Pydantic Schemas
-# ----------------------------
+# ==========================================================
 
-# License Schemas
-class LicenseBase(BaseModel):
-    key: str = Field(..., description="License key in format XXXX-XXXX-XXXX-XXXX")
-    status: str = Field(..., description="License status: active or revoked")
-    client_id: Optional[int] = Field(None, description="ID of the client associated with the license")
-    expires_at: Optional[datetime] = Field(None, description="Expiration date of the license")
+# -------- Clients --------
 
-class LicenseCreate(LicenseBase):
-    pass
-
-class LicenseUpdate(BaseModel):
-    key: Optional[str] = Field(None, description="Updated license key")
-    status: Optional[str] = Field(None, description="Updated status: active or revoked")
-    client_id: Optional[int] = Field(None, description="Updated client id")
-    expires_at: Optional[datetime] = Field(None, description="Updated expiration date")
-
-class License(LicenseBase):
-    id: int = Field(..., description="Unique license ID")
-
-    class Config:
-        orm_mode = True
-
-
-# Client Schemas
 class ClientBase(BaseModel):
-    name: str = Field(..., description="Full name of the client")
-    email: EmailStr = Field(..., description="Client email address")
+    name: str
+    email: EmailStr
+
 
 class ClientCreate(ClientBase):
     pass
 
-class ClientUpdate(BaseModel):
-    name: Optional[str] = Field(None, description="Updated client name")
-    email: Optional[EmailStr] = Field(None, description="Updated client email address")
 
 class Client(ClientBase):
-    id: int = Field(..., description="Unique client ID")
+    id: int
+    created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+
+# -------- Licenses --------
+
+class LicenseBase(BaseModel):
+    client_id: int
+    expires_at: Optional[datetime] = None
+
+
+class LicenseCreate(LicenseBase):
+    pass
+
+
+class License(LicenseBase):
+    id: int
+    status: str
+    created_at: datetime
+    key: Optional[str] = None  # returned only on generation
+
+    class Config:
+        from_attributes = True
+
+
+class LicenseStatus(BaseModel):
+    status: str

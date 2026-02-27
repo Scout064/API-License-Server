@@ -1,23 +1,21 @@
--- ----------------------------
--- Clients Table
--- ----------------------------
-CREATE TABLE IF NOT EXISTS clients (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(128) NOT NULL,
-    email VARCHAR(128) NOT NULL UNIQUE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE DATABASE IF NOT EXISTS license_server;
+USE license_server;
 
--- ----------------------------
--- Licenses Table
--- ----------------------------
-CREATE TABLE IF NOT EXISTS licenses (
+CREATE TABLE clients (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    license_key VARCHAR(64) NOT NULL UNIQUE,
-    client_id INT NULL,
-    status ENUM('active','revoked') DEFAULT 'active',
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE licenses (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    key_hash CHAR(64) NOT NULL UNIQUE,
+    client_id INT NOT NULL,
+    status ENUM('active', 'revoked') DEFAULT 'active',
+    expires_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NULL,
-    revoked_at TIMESTAMP NULL,
-    INDEX idx_client_id (client_id),
-    CONSTRAINT fk_client FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_license_hash ON licenses(key_hash);

@@ -1,113 +1,70 @@
-from fastapi import APIRouter, HTTPException, Depends, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
-import random
-import string
-from typing import List
-
-from app.database import get_db   # <-- make sure this exists
-from app import models            # ORM models
-from app import models as schemas # Pydantic schemas are in models.py
+from app.models import ClientBase, Client, LicenseBase, License, hash_license_key, ClientORM, LicenseORM
+from app.database import get_db
+from app.auth import require_role
+from fastapi_limiter.depends import RateLimiter
+import secrets
 
 router = APIRouter()
 
-# Regex pattern for license key: XXXX-XXXX-XXXX-XXXX
-LICENSE_KEY_REGEX = r"^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+LICENSE_KEY_REGEX = r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$'
 
-def generate_license_key() -> str:
-    """Generates a license key in the format XXXX-XXXX-XXXX-XXXX"""
-    parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(4)]
-    return '-'.join(parts)
+# ------------------- CLIENT ROUTES -------------------
 
-# Regex pattern for license key: XXXX-XXXX-XXXX-XXXX
-LICENSE_KEY_REGEX = r"^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$"
-
-def generate_license_key() -> str:
-    """Generates a license key in the format XXXX-XXXX-XXXX-XXXX"""
-    parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(4)]
-    return '-'.join(parts)
-
-# -------------------
-# Client Endpoints
-# -------------------
-
-@router.post("/clients", response_model=schemas.Client)
-def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
-    """Create a new client."""
-    existing = db.query(models.ClientORM).filter(models.ClientORM.email == client.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Client with this email already exists")
-    
-    db_client = models.ClientORM(name=client.name, email=client.email)
+@router.post("/clients", response_model=Client, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def create_client(client: ClientBase, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    db_client = ClientORM(name=client.name, email=client.email)
     db.add(db_client)
     db.commit()
     db.refresh(db_client)
     return db_client
 
-@router.get("/clients", response_model=List[schemas.Client])
-def list_clients(db: Session = Depends(get_db)):
-    """List all clients."""
-    return db.query(models.ClientORM).all()
+@router.get("/clients", response_model=list[Client])
+def list_clients(db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    return db.query(ClientORM).all()
 
-@router.get("/clients/{client_id}", response_model=schemas.Client)
-def get_client(client_id: int, db: Session = Depends(get_db)):
-    """Get client by ID."""
-    client = db.query(models.ClientORM).filter(models.ClientORM.id == client_id).first()
-    if not client:
+@router.get("/clients/{client_id}", response_model=Client)
+def get_client(client_id: int, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    db_client = db.query(ClientORM).filter(ClientORM.id == client_id).first()
+    if not db_client:
         raise HTTPException(status_code=404, detail="Client not found")
-    return client
+    return db_client
 
-# -------------------
-# License Endpoints
-# -------------------
+# ------------------- LICENSE ROUTES -------------------
 
-@router.post("/licenses/generate", response_model=schemas.License)
-def create_license(client_id: int, db: Session = Depends(get_db)):
-    """Generate a new license key for a client."""
-    client = db.query(models.ClientORM).filter(models.ClientORM.id == client_id).first()
+@router.post("/licenses/generate", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def generate_license(client_id: int, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    client = db.query(ClientORM).filter(ClientORM.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     
-    # Ensure unique license key
-    while True:
-        key = generate_license_key()
-        if not db.query(models.LicenseORM).filter(models.LicenseORM.key == key).first():
-            break
+    # generate license key
+    key_fmt = '-'.join([''.join(secrets.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') for _ in range(4)) for _ in range(4)])
+    hashed = hash_license_key(key_fmt)
 
-    new_license = models.LicenseORM(
-        key=key,
-        client_id=client_id,
-        status="active"
-    )
-    db.add(new_license)
+    db_license = LicenseORM(key_hash=hashed, client_id=client_id, status='active')
+    db.add(db_license)
     db.commit()
-    db.refresh(new_license)
-    return new_license
+    db.refresh(db_license)
+    
+    return License(id=db_license.id, client_id=client_id, status=db_license.status, key=key_fmt, created_at=db_license.created_at)
 
-@router.get("/licenses/{license_key}", response_model=schemas.License)
-def get_license(
-    license_key: str = Path(..., regex=LICENSE_KEY_REGEX),
-    db: Session = Depends(get_db)
-):
-    """Get license info by license key."""
-    license_obj = db.query(models.LicenseORM).filter(models.LicenseORM.key == license_key).first()
+@router.get("/licenses/{license_key}", response_model=License, dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+def validate_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: Session = Depends(get_db), user=Depends(require_role("reader"))):
+    hashed = hash_license_key(license_key)
+    license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found")
-    return license_obj
+    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at)
 
-@router.post("/licenses/{license_key}/revoke", response_model=schemas.License)
-def revoke_license(
-    license_key: str = Path(..., regex=LICENSE_KEY_REGEX),
-    db: Session = Depends(get_db)
-):
-    """Revoke a license by key."""
-    license_obj = db.query(models.LicenseORM).filter(models.LicenseORM.key == license_key).first()
+@router.post("/licenses/{license_key}/revoke", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    hashed = hash_license_key(license_key)
+    license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found")
-    
-    if license_obj.status == "revoked":
-        raise HTTPException(status_code=400, detail="License already revoked")
-    
-    license_obj.status = "revoked"
+    license_obj.status = 'revoked'
     db.commit()
     db.refresh(license_obj)
-    return license_obj
+    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at)

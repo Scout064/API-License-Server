@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from app.routes import router
+from app.database import engine, Base
+from app import models  # IMPORTANT: ensures models are registered
 
 app = FastAPI(
     title="License Server API",
@@ -7,4 +9,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-app.include_router(router, prefix="/api")
+# Create tables on startup
+Base.metadata.create_all(bind=engine)
+
+app.include_router(router)

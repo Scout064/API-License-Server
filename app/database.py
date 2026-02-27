@@ -1,19 +1,41 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import StaticPool
 
-DB_USER = os.getenv("DB_USER", "license_user")
-DB_PASS = os.getenv("DB_PASS", "StrongPassword123!")
-DB_NAME = os.getenv("DB_NAME", "license_db")
-DB_HOST = os.getenv("DB_HOST", "localhost")
+TESTING = os.getenv("TESTING") == "1"
 
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
+if TESTING:
+    DATABASE_URL = "sqlite://"
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    DB_USER = os.getenv("DB_USER")
+    DB_PASS = os.getenv("DB_PASS")
+    DB_NAME = os.getenv("DB_NAME")
+    DB_HOST = os.getenv("DB_HOST")
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    if not all([DB_USER, DB_PASS, DB_NAME, DB_HOST]):
+        raise RuntimeError("DB_USER, DB_PASS, DB_NAME, DB_HOST required")
+
+    DATABASE_URL = (
+        f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
+    )
+
+    engine = create_engine(DATABASE_URL)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
+
+Base = declarative_base()
 
 
-# Dependency for FastAPI
 def get_db():
     db = SessionLocal()
     try:
