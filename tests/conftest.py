@@ -49,11 +49,11 @@ from app.auth import create_token
 
 @pytest.fixture()
 def admin_token():
-    return create_token(user_id=1, role="admin", secret=JWT_SECRET)
+    return create_token(user_id=1, role="admin")
 
 @pytest.fixture()
 def user_token():
-    return create_token(user_id=2, role="user", secret=JWT_SECRET)
+    return create_token(user_id=2, role="user")
 
 @pytest.fixture()
 def admin_headers(admin_token):
