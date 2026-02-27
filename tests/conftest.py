@@ -1,18 +1,14 @@
 # tests/conftest.py
 import os
+os.environ["DB_USER"] = "testuser"
+os.environ["DB_PASS"] = "testpass"
+os.environ["DB_NAME"] = "testdb"
+os.environ["DB_HOST"] = "localhost"
+os.environ["JWT_SECRET"] = "testsecret123"
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from app.main import app
-
-# Set environment variables for auth
-os.environ["JWT_SECRET"] = "testsecret123"
-
-# Patch database environment variables to bypass RuntimeError
-os.environ["DB_USER"] = "test"
-os.environ["DB_PASS"] = "test"
-os.environ["DB_NAME"] = "test"
-os.environ["DB_HOST"] = "localhost"
 
 # Patch FastAPILimiter so it doesn't require Redis
 @pytest.fixture(scope="module")
