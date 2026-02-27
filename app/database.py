@@ -7,8 +7,10 @@ DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 DB_HOST = os.getenv("DB_HOST")
 
-if not all([DB_USER, DB_PASS, DB_NAME, DB_HOST]):
-    raise RuntimeError("DB_USER, DB_PASS, DB_NAME, DB_HOST required")
+# Skip DB connection check in tests
+if os.getenv("TESTING") != "1":
+    if not all([DB_USER, DB_PASS, DB_NAME, DB_HOST]):
+        raise RuntimeError("DB_USER, DB_PASS, DB_NAME, DB_HOST required")
 
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
 
