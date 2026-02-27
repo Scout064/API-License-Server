@@ -6,7 +6,6 @@ from sqlalchemy.pool import StaticPool
 TESTING = os.getenv("TESTING") == "1"
 
 if TESTING:
-    # Use in-memory SQLite for tests
     DATABASE_URL = "sqlite://"
 else:
     DB_USER = os.getenv("DB_USER")
@@ -42,12 +41,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-# Create tables automatically in testing mode
-if TESTING:
-    DATABASE_URL = "sqlite://"
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
