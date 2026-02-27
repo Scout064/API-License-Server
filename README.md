@@ -2,6 +2,8 @@
 
 [![Python application](https://github.com/Scout064/API-License-Server/actions/workflows/python-app.yml/badge.svg?branch=Hardening)](https://github.com/Scout064/API-License-Server/actions/workflows/python-app.yml)
 
+[![CodeQL Advanced](https://github.com/Scout064/API-License-Server/actions/workflows/codeql.yml/badge.svg)](https://github.com/Scout064/API-License-Server/actions/workflows/codeql.yml)
+
 A secure, production-ready License Management API built with FastAPI and MariaDB.
 
 This hardened version includes:
