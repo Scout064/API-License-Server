@@ -1,5 +1,3 @@
-# File: tests/conftest.py
-
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -13,7 +11,7 @@ from app.auth import create_token
 from sqlalchemy.orm import Session
 
 # ---------------------------
-# Patch FastAPILimiter (mock Redis)
+# Patch FastAPILimiter
 # ---------------------------
 @pytest.fixture(autouse=True, scope="session")
 def patch_fastapi_limiter():
@@ -54,7 +52,6 @@ def client():
 # ---------------------------
 @pytest.fixture()
 def admin_token():
-    # Use the same secret as your app (ensure it matches app/auth.py)
     return create_token(user_id=1, role="admin", secret=os.environ.get("JWT_SECRET", "testsecret123"))
 
 @pytest.fixture()
