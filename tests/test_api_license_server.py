@@ -1,4 +1,10 @@
 # tests/test_api_license_server.py
+import os
+
+os.environ["DB_USER"] = "test_user"
+os.environ["DB_PASS"] = "test_pass"
+os.environ["DB_NAME"] = "test_db"
+os.environ["DB_HOST"] = "localhost"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,12 +13,6 @@ import jwt
 from app.main import app
 from app.models import LicenseORM, ClientORM
 from app.auth import JWT_SECRET  # your JWT secret from auth.py
-import os
-
-os.environ["DB_USER"] = "test_user"
-os.environ["DB_PASS"] = "test_pass"
-os.environ["DB_NAME"] = "test_db"
-os.environ["DB_HOST"] = "localhost"
 
 client = TestClient(app)
 
