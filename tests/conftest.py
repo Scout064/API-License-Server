@@ -12,7 +12,7 @@ os.environ["DB_HOST"] = "localhost"
 os.environ["JWT_SECRET"] = "testsecret123"
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
 from app.database import get_db
@@ -20,13 +20,18 @@ from app.auth import create_token
 from sqlalchemy.orm import Session
 
 # ---------------------------
-# Patch FastAPILimiter globally
+# Patch FastAPILimiter correctly
 # ---------------------------
 @pytest.fixture(autouse=True, scope="session")
 def patch_fastapi_limiter():
-    """Fully mocks FastAPILimiter to prevent Redis calls."""
+    """Mocks FastAPILimiter to prevent Redis calls during tests."""
+    mock_redis = AsyncMock()
+    mock_redis.evalsha = AsyncMock(return_value=1)
+    mock_redis.set = AsyncMock(return_value=True)
+    mock_redis.get = AsyncMock(return_value=None)
+
     with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()), \
-         patch("fastapi_limiter.FastAPILimiter.redis", new=True), \
+         patch("fastapi_limiter.FastAPILimiter.redis", new=mock_redis), \
          patch("fastapi_limiter.FastAPILimiter.identifier", new=AsyncMock(return_value="test_key")), \
          patch("fastapi_limiter.FastAPILimiter.http_callback", new=AsyncMock(return_value=None)):
         yield
