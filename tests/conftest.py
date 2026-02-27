@@ -2,7 +2,8 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 JWT_SECRET = os.getenv("JWT_SECRET", "fallback_test_secret")
-
+import jwt
+from datetime import datetime, timedelta
 import pytest
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
@@ -56,9 +57,21 @@ def user_token():
     return create_token(user_id=2, role="user")
 
 @pytest.fixture()
-def admin_headers(admin_token):
-    return {"Authorization": f"Bearer {admin_token}"}
+def admin_headers():
+    payload = {
+        "user_id": 1,
+        "role": "admin",
+        "exp": datetime.utcnow() + timedelta(hours=1)
+    }
+    token = jwt.encode(payload, os.environ["JWT_SECRET"], algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
 
 @pytest.fixture()
-def user_headers(user_token):
-    return {"Authorization": f"Bearer {user_token}"}
+def user_headers():
+    payload = {
+        "user_id": 2,
+        "role": "user",
+        "exp": datetime.utcnow() + timedelta(hours=1)
+    }
+    token = jwt.encode(payload, os.environ["JWT_SECRET"], algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
