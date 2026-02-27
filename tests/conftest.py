@@ -1,4 +1,10 @@
 # tests/conftest.py
+import os
+# Set dummy DB credentials so app/database.py doesn't fail
+os.environ["DB_USER"] = "test_user"
+os.environ["DB_PASS"] = "test_pass"
+os.environ["DB_NAME"] = "test_db"
+os.environ["DB_HOST"] = "localhost"
 import asyncio
 import pytest
 from fastapi.testclient import TestClient
