@@ -41,5 +41,4 @@ jobs:
       run: |
           export TESTING=1
           export PYTHONPATH=$(pwd)
-          export JWT_SECRET="testsecret123"  # temporary secret for tests
           pytest tests/ -v --disable-warnings
