@@ -10,26 +10,15 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from app.main import app
 
-# Patch FastAPILimiter so it doesn't require Redis
-@pytest.fixture(scope="module")
-def client():
-    with patch("app.routes.RateLimiter") as mock_limiter:
-        mock_limiter.return_value.__call__ = lambda *args, **kwargs: None
-        yield TestClient(__import__("app.main").main.app)
-
-# Mock admin token headers for tests
-@pytest.fixture(scope="session")
-def admin_headers():
-    return {"Authorization": "Bearer test_admin_token"}
-
-# Patch the slowapi Limiter to a no-op during tests
+# --- Disable rate limiting ---
 @pytest.fixture(autouse=True, scope="session")
 def disable_rate_limiter():
-    with patch("app.routes.limiter") as mock_limiter:
-        mock_limiter.limit = lambda *args, **kwargs: (lambda f: f)  # Decorator no-op
-        yield
+    with patch("fastapi_limiter.FastAPILimiter.init") as mock_init:
+        yield mock_init
 
-# Provide a test client
-@pytest.fixture(scope="session")
-def client():
-    return TestClient(app)
+# --- Optionally: disable DB session for unit tests ---
+@pytest.fixture(autouse=True)
+def patch_db_session():
+    with patch("app.database.get_db") as mock_db:
+        mock_db.return_value = iter([])  # empty generator for testing
+        yield mock_db
