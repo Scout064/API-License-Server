@@ -15,7 +15,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
-from app.dependencies import get_db
+from app.database import get_db
 from app.auth import create_token
 from sqlalchemy.orm import Session
 
