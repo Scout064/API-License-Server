@@ -29,7 +29,8 @@ jobs:
           pip install pytest pytest-asyncio httpx
 
       - name: Run tests
-        run: |
+      run: |
           export TESTING=1
           export PYTHONPATH=$(pwd)
-          pytest -v --disable-warnings
+          export JWT_SECRET="testsecret123"  # temporary secret for tests
+          pytest tests/ -v --disable-warnings
