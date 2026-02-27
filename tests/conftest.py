@@ -35,7 +35,6 @@ def patch_fastapi_limiter():
 def db_session():
     session = AsyncMock(spec=Session)
     yield session
-    await session.close()
 
 # Override the app dependency
 @pytest.fixture(autouse=True)
