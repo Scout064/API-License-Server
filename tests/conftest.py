@@ -3,22 +3,34 @@ import sys
 import pytest
 import jwt
 from datetime import datetime, timedelta
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock, patch
 
-# Ensure the app directory is in the path
+# 1. PATH SETUP & EARLY PATCHING
+# Ensure the app directory is in the path for GitHub Actions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# IMPORTANT: Patch the limiter BEFORE importing the app to prevent 
-# it from trying to connect to Redis during the module-level import.
+# Patch the limiter BEFORE importing the app to prevent Redis connection attempts
 with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()):
     from app.main import app
     from app.database import Base, get_db
 
-# 1. Database Setup
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+# 2. DEBUGGING FIXTURE
+@pytest.fixture(scope="session", autouse=True)
+def check_routes():
+    """Debug: Prints all registered routes to the build log."""
+    print("\n--- Registered Routes ---")
+    for route in app.routes:
+        # Check if it's a standard Route object with a path attribute
+        path = getattr(route, 'path', 'No Path Found')
+        print(f"Path: {path}")
+    print("------------------------\n")
+
+# 3. DATABASE SETUP (In-Memory SQLite)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -29,6 +41,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
+    """Wipes and recreates the database for every single test."""
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
@@ -37,9 +50,10 @@ def db_session():
         session.close()
         Base.metadata.drop_all(bind=engine)
 
-# 2. Test Client with Dependency Injection
+# 4. TEST CLIENT FIXTURE
 @pytest.fixture(scope="function")
 def client(db_session):
+    """Overrides the FastAPI dependency injection to use the test DB."""
     def override_get_db():
         try:
             yield db_session
@@ -51,15 +65,7 @@ def client(db_session):
         yield c
     app.dependency_overrides.clear()
 
-# 3. Global Mock for Rate Limiter (Neutralizes it for all tests)
-@pytest.fixture(autouse=True, scope="session")
-def patch_limiter_globally():
-    with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()), \
-         patch("fastapi_limiter.FastAPILimiter.redis", new=AsyncMock()), \
-         patch("fastapi_limiter.FastAPILimiter.identifier", new=AsyncMock(return_value="test")):
-        yield
-
-# 4. Authentication Headers
+# 5. AUTHENTICATION HELPERS
 def generate_test_headers(role: str):
     secret = os.getenv("JWT_SECRET", "fallback_test_secret")
     payload = {
