@@ -1,102 +1,70 @@
-import random
-import string
-from fastapi import APIRouter, HTTPException, Depends, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from app import schemas
+from app.models import ClientBase, Client, LicenseBase, License, hash_license_key
 from app.database import get_db
 from app.auth import require_role
-from app.models import LicenseORM, ClientORM
-from app.auth import hash_license_key
+from fastapi_limiter.depends import RateLimiter
+import secrets
 
-# Rate Limiter (10 per minute per IP)
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
-@router.exception_handler(RateLimitExceeded)
-def ratelimit_handler(request: Request, exc: RateLimitExceeded):
-    raise HTTPException(status_code=429, detail="Rate limit exceeded")
+LICENSE_KEY_REGEX = r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$'
 
-# -------------------
-# Clients (admin only)
-# -------------------
-@router.post("/clients", response_model=schemas.Client)
-@limiter.limit("5/minute")
-def create_client(
-    client: schemas.ClientCreate, db: Session = Depends(get_db), user=Depends(require_role("admin"))
-):
-    existing = db.query(ClientORM).filter(ClientORM.email == client.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Client exists")
+# ------------------- CLIENT ROUTES -------------------
+
+@router.post("/clients", response_model=Client, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def create_client(client: ClientBase, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
     db_client = ClientORM(name=client.name, email=client.email)
     db.add(db_client)
     db.commit()
     db.refresh(db_client)
     return db_client
 
-@router.get("/clients", response_model=list[schemas.Client])
-@limiter.limit("10/minute")
+@router.get("/clients", response_model=list[Client])
 def list_clients(db: Session = Depends(get_db), user=Depends(require_role("admin"))):
     return db.query(ClientORM).all()
 
-@router.get("/clients/{client_id}", response_model=schemas.Client)
-@limiter.limit("10/minute")
-def get_client(
-    client_id: int, db: Session = Depends(get_db), user=Depends(require_role("admin"))
-):
-    client = db.get(ClientORM, client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Not found")
-    return client
+@router.get("/clients/{client_id}", response_model=Client)
+def get_client(client_id: int, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    db_client = db.query(ClientORM).filter(ClientORM.id == client_id).first()
+    if not db_client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return db_client
 
-# -------------------
-# Licenses
-# -------------------
-@router.post("/licenses/generate", response_model=schemas.License)
-@limiter.limit("5/minute")
-def create_license(
-    client_id: int, db: Session = Depends(get_db), user=Depends(require_role("admin"))
-):
-    client = db.get(ClientORM, client_id)
+# ------------------- LICENSE ROUTES -------------------
+
+@router.post("/licenses/generate", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def generate_license(client_id: int, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    client = db.query(ClientORM).filter(ClientORM.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    while True:
-        key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
-        key_fmt = "-".join([key[i:i+4] for i in range(0,16,4)])
-        hashed = hash_license_key(key_fmt)
-        if not db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first():
-            break
-    new_license = LicenseORM(key_hash=hashed, client_id=client_id, status="active")
-    db.add(new_license)
-    db.commit()
-    db.refresh(new_license)
-    return {**new_license.__dict__, "key": key_fmt}
+    
+    # generate license key
+    key_fmt = '-'.join([''.join(secrets.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') for _ in range(4)) for _ in range(4)])
+    hashed = hash_license_key(key_fmt)
 
-@router.get("/licenses/{license_key}", response_model=schemas.License)
-@limiter.limit("10/minute")
-def get_license(
-    license_key: str = Path(...), db: Session = Depends(get_db), user=Depends(require_role("reader"))
-):
-    hashed = hash_license_key(license_key)
-    lic = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
-    if not lic:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {**lic.__dict__, "key": license_key}
-
-@router.post("/licenses/{license_key}/revoke", response_model=schemas.License)
-@limiter.limit("5/minute")
-def revoke_license(
-    license_key: str = Path(...), db: Session = Depends(get_db), user=Depends(require_role("admin"))
-):
-    hashed = hash_license_key(license_key)
-    lic = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
-    if not lic:
-        raise HTTPException(status_code=404, detail="Not found")
-    if lic.status == "revoked":
-        raise HTTPException(status_code=400, detail="Already revoked")
-    lic.status = "revoked"
+    db_license = LicenseORM(key_hash=hashed, client_id=client_id, status='active')
+    db.add(db_license)
     db.commit()
-    db.refresh(lic)
-    return {**lic.__dict__, "key": license_key}
+    db.refresh(db_license)
+    
+    return License(id=db_license.id, client_id=client_id, status=db_license.status, key=key_fmt, created_at=db_license.created_at)
+
+@router.get("/licenses/{license_key}", response_model=License, dependencies=[Depends(RateLimiter(times=10, seconds=60))])
+def validate_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: Session = Depends(get_db), user=Depends(require_role("reader"))):
+    hashed = hash_license_key(license_key)
+    license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
+    if not license_obj:
+        raise HTTPException(status_code=404, detail="License not found")
+    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at)
+
+@router.post("/licenses/{license_key}/revoke", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    hashed = hash_license_key(license_key)
+    license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
+    if not license_obj:
+        raise HTTPException(status_code=404, detail="License not found")
+    license_obj.status = 'revoked'
+    db.commit()
+    db.refresh(license_obj)
+    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at)
