@@ -40,4 +40,5 @@ jobs:
     - name: Run Tests with pytest
       run: |
         export PYTHONPATH=$(pwd)
+        export JWT_SECRET="testsecret123"  # temporary secret for tests
         pytest tests/
