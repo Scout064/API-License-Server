@@ -1,59 +1,32 @@
 # tests/conftest.py
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-import os
-# --- Set test environment variables ---
-os.environ["DB_USER"] = "testuser"
-os.environ["DB_PASS"] = "testpass"
-os.environ["DB_NAME"] = "testdb"
-os.environ["DB_HOST"] = "localhost"
-os.environ["JWT_SECRET"] = "testsecret123"
+import asyncio
 import pytest
-from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
-
 from app.main import app
-from app.dependencies import get_db
-from sqlalchemy.orm import Session
+from app.auth import get_admin_token
+from fastapi_limiter.depends import RateLimiter
 
-# ---------------------------
-# Patch FastAPILimiter globally
-# ---------------------------
-@pytest.fixture(autouse=True, scope="session")
-def patch_fastapi_limiter():
-    """
-    Fully mocks FastAPILimiter to prevent Redis calls.
-    """
-    with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()), \
-         patch("fastapi_limiter.FastAPILimiter.redis", new=True), \
-         patch("fastapi_limiter.FastAPILimiter.identifier", new=AsyncMock(return_value="test_key")), \
-         patch("fastapi_limiter.FastAPILimiter.http_callback", new=AsyncMock(return_value=None)):
-        yield
+# Set up test client
+client = TestClient(app)
 
-# ---------------------------
-# Mock DB session for tests
-# ---------------------------
-@pytest.fixture()
-def db_session():
-    session = AsyncMock(spec=Session)
-    yield session
-
-# Override the app dependency
-@pytest.fixture(autouse=True)
-def override_get_db(db_session):
-    app.dependency_overrides[get_db] = lambda: db_session
-    yield
-    app.dependency_overrides.clear()
-
-# ---------------------------
-# Test client
-# ---------------------------
-@pytest.fixture()
-def client():
-    return TestClient(app)
-
-@pytest.fixture()
+# Admin headers fixture
+@pytest.fixture(scope="session")
 def admin_headers():
-    return {"Authorization": "Bearer test_admin_token"}
+    token = get_admin_token()
+    return {"Authorization": f"Bearer {token}"}
+
+# Ensure event loop is available for async tests
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+# Patch RateLimiter to avoid actual Redis calls during tests
+@pytest.fixture(autouse=True)
+def patch_rate_limiter(monkeypatch):
+    # Replace identifier with a simple async function
+    async def fake_identifier(request):
+        return "test_key"
+
+    monkeypatch.setattr(RateLimiter, "identifier", fake_identifier)
