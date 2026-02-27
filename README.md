@@ -2,7 +2,7 @@
 
 [![Python application](https://github.com/Scout064/API-License-Server/actions/workflows/python-app.yml/badge.svg?branch=Hardening)](https://github.com/Scout064/API-License-Server/actions/workflows/python-app.yml)
 [![CodeQL Advanced](https://github.com/Scout064/API-License-Server/actions/workflows/codeql.yml/badge.svg)](https://github.com/Scout064/API-License-Server/actions/workflows/codeql.yml)
-[![Dependabot Updates](https://github.com/Scout064/API-License-Server/actions/workflows/dependabot/dependabot-updates/badge.svg?branch=Beta)](https://github.com/Scout064/API-License-Server/actions/workflows/dependabot/dependabot-updates)
+[![Dependabot Updates](https://github.com/Scout064/API-License-Server/actions/workflows/dependabot/dependabot-updates/badge.svg?branch=main)](https://github.com/Scout064/API-License-Server/actions/workflows/dependabot/dependabot-updates)
 [![Dependency review](https://github.com/Scout064/API-License-Server/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/Scout064/API-License-Server/actions/workflows/dependency-review.yml)
 
 A secure, production-ready License Management API built with FastAPI and MariaDB.
