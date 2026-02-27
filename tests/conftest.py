@@ -10,13 +10,13 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from app.main import app
 
-# --- Disable rate limiting ---
+# --- Patch FastAPILimiter.init to prevent Redis errors ---
 @pytest.fixture(autouse=True, scope="session")
-def disable_rate_limiter():
-    with patch("fastapi_limiter.FastAPILimiter.init") as mock_init:
-        yield mock_init
+def patch_fastapi_limiter_init():
+    with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()):
+        yield
 
-# --- Optionally: disable DB session for unit tests ---
+# --- Patch DB session so tests don't require a real database ---
 @pytest.fixture(autouse=True)
 def patch_db_session():
     with patch("app.database.get_db") as mock_db:
