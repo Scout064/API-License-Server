@@ -7,16 +7,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from unittest.mock import AsyncMock, patch
 
 # Ensure the app directory is in the path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.main import app
-from app.database import Base, get_db
+# IMPORTANT: Patch the limiter BEFORE importing the app to prevent 
+# it from trying to connect to Redis during the module-level import.
+with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()):
+    from app.main import app
+    from app.database import Base, get_db
 
-# 1. Database Setup: Use an in-memory SQLite for isolated testing
+# 1. Database Setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
@@ -26,7 +29,6 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
-    """Creates tables for each test and provides a session."""
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
@@ -38,7 +40,6 @@ def db_session():
 # 2. Test Client with Dependency Injection
 @pytest.fixture(scope="function")
 def client(db_session):
-    """Overrides the get_db dependency to use the test database."""
     def override_get_db():
         try:
             yield db_session
@@ -50,10 +51,9 @@ def client(db_session):
         yield c
     app.dependency_overrides.clear()
 
-# 3. Mock Rate Limiter (Prevents Redis connection errors in CI)
+# 3. Global Mock for Rate Limiter (Neutralizes it for all tests)
 @pytest.fixture(autouse=True, scope="session")
-def patch_fastapi_limiter():
-    from unittest.mock import AsyncMock, patch
+def patch_limiter_globally():
     with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()), \
          patch("fastapi_limiter.FastAPILimiter.redis", new=AsyncMock()), \
          patch("fastapi_limiter.FastAPILimiter.identifier", new=AsyncMock(return_value="test")):
@@ -76,7 +76,6 @@ def admin_headers():
 
 @pytest.fixture()
 def reader_headers():
-    """Fixes the 403 error for the validation endpoint."""
     return generate_test_headers("reader")
 
 @pytest.fixture()
