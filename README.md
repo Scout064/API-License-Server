@@ -1,5 +1,7 @@
 # API License Server (Hardened Edition)
 
+[![Python application](https://github.com/Scout064/API-License-Server/actions/workflows/python-app.yml/badge.svg?branch=Hardening)](https://github.com/Scout064/API-License-Server/actions/workflows/python-app.yml)
+
 A secure, production-ready License Management API built with FastAPI and MariaDB.
 
 This hardened version includes:
