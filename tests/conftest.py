@@ -7,18 +7,11 @@ from unittest.mock import AsyncMock, patch
 
 # 1. NEUTRALIZE RATE LIMITER IMMEDIATELY
 import fastapi_limiter
-
-# Satisfies the "if not FastAPILimiter.redis" check inside the library
 fastapi_limiter.FastAPILimiter.redis = AsyncMock()
-
-# Prevents the app from trying to connect to a real Redis during startup
 fastapi_limiter.FastAPILimiter.init = AsyncMock()
 
-# Fixes: TypeError: 'NoneType' object is not callable
-# This mock provides a fake "user identifier" (like an IP) for the limiter logic
+# FIX: Prevents TypeError: 'NoneType' object is not callable
 fastapi_limiter.FastAPILimiter.identifier = AsyncMock(return_value="test-user")
-
-# Prevents errors if the "rate limit exceeded" callback is ever triggered
 fastapi_limiter.FastAPILimiter.http_callback = AsyncMock()
 
 # Ensure the app directory is in the path for GitHub Actions
@@ -33,10 +26,14 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.database import Base, get_db
 
+# FIX: SQL Table missing error
+# IMPORTANT: You must import your models here so they register with Base.metadata.
+# If your models are in app/models.py, uncomment the line below:
+# from app import models 
+
 # 2. DEBUGGING: CONFIRM ROUTES ARE LOADED
 @pytest.fixture(scope="session", autouse=True)
 def check_routes():
-    """Debug: Prints all registered routes to the build log."""
     print("\n--- Registered Routes ---")
     for route in app.routes:
         path = getattr(route, 'path', 'No Path Found')
@@ -48,25 +45,25 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+    poolclass=StaticPool, # Maintains a single connection for the in-memory DB
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @pytest.fixture(scope="function")
 def db_session():
-    """Wipes and recreates the database for every single test."""
+    # This creates the tables based on everything registered in Base.metadata
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
         yield session
     finally:
         session.close()
+        # Wipes the DB after each test for isolation
         Base.metadata.drop_all(bind=engine)
 
 # 4. TEST CLIENT FIXTURE
 @pytest.fixture(scope="function")
 def client(db_session):
-    """Overrides the FastAPI dependency injection to use the test DB."""
     def override_get_db():
         try:
             yield db_session
@@ -80,7 +77,7 @@ def client(db_session):
 
 # 5. AUTHENTICATION HELPERS
 def generate_test_headers(role: str):
-    secret = os.getenv("JWT_SECRET", "fallback_test_secret")
+    secret = os.getenv("JWT_SECRET", "test_jwt_secret")
     payload = {
         "user_id": 99,
         "role": role,
