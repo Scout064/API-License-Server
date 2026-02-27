@@ -29,7 +29,7 @@ jobs:
           pip install pytest pytest-asyncio httpx
 
       - name: Run tests
-      run: |
+        run: |
           export TESTING=1
           export PYTHONPATH=$(pwd)
           pytest tests/ -v --disable-warnings
