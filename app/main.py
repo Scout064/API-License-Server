@@ -9,8 +9,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-@app.on_event("startup")
-def startup():
-    Base.metadata.create_all(bind=engine)
+# Create tables on startup
+Base.metadata.create_all(bind=engine)
 
 app.include_router(router)
