@@ -20,13 +20,12 @@ from sqlalchemy import (
     ForeignKey,
     Enum,
 )
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship # Removed declarative_base from here
 
 from pydantic import BaseModel, EmailStr
 
-
-Base = declarative_base()
-
+# CRITICAL FIX: Import Base from database.py instead of creating a new one
+from app.database import Base 
 
 # ==========================================================
 # Utility Functions
