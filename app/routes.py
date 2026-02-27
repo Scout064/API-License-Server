@@ -65,7 +65,7 @@ def create_license(
     while True:
         key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
         key_fmt = "-".join([key[i:i+4] for i in range(0,16,4)])
-        hashed = hash_license(key_fmt)
+        hashed = hash_license_key_key(key_fmt)
         if not db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first():
             break
     new_license = LicenseORM(key_hash=hashed, client_id=client_id, status="active")
@@ -79,7 +79,7 @@ def create_license(
 def get_license(
     license_key: str = Path(...), db: Session = Depends(get_db), user=Depends(require_role("reader"))
 ):
-    hashed = hash_license(license_key)
+    hashed = hash_license_key_key(license_key)
     lic = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
     if not lic:
         raise HTTPException(status_code=404, detail="Not found")
@@ -90,7 +90,7 @@ def get_license(
 def revoke_license(
     license_key: str = Path(...), db: Session = Depends(get_db), user=Depends(require_role("admin"))
 ):
-    hashed = hash_license(license_key)
+    hashed = hash_license_key_key(license_key)
     lic = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
     if not lic:
         raise HTTPException(status_code=404, detail="Not found")
