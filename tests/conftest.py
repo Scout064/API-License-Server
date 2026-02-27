@@ -23,12 +23,14 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.database import Base, get_db
 
-# CRITICAL FIX: Import models so Base.metadata knows about the 'clients' table
+# =========================================================================
+# CRITICAL FIX: Explicitly import models so Base.metadata is populated.
+# =========================================================================
 try:
-    from app import models 
+    from app import models  
 except ImportError:
-    # Fallback in case your directory structure requires a direct import
-    from app.models import Base as _
+    # Fallback if your models are structured differently
+    import app.models as models
 
 # 2. DATABASE SETUP (In-Memory SQLite)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -41,7 +43,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
-    # Tables are created here using the metadata from imported models
+    # This now creates 'clients' and 'licenses' tables because models were imported
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
@@ -63,11 +65,12 @@ def client(db_session):
         yield c
     app.dependency_overrides.clear()
 
-# 3. AUTHENTICATION FIXTURES
-# Re-adding these to fix the "fixture not found" error
+# =========================================================================
+# 3. AUTHENTICATION FIXTURES (Fixed the "fixture not found" error)
+# =========================================================================
 def generate_test_headers(role: str):
-    # Using the secret defined in your GitHub Actions environment
-    secret = os.getenv("JWT_SECRET", "testsecret123")
+    # Matches the JWT_SECRET usually passed in your GitHub Actions workflow
+    secret = os.getenv("JWT_SECRET", "test_jwt_secret")
     payload = {
         "user_id": 99,
         "role": role,
