@@ -6,12 +6,20 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 # 1. NEUTRALIZE RATE LIMITER IMMEDIATELY
-# We must do this before importing the app so the routes use the mocked state.
 import fastapi_limiter
-# This satisfies the "if not FastAPILimiter.redis" check in the library
+
+# Satisfies the "if not FastAPILimiter.redis" check inside the library
 fastapi_limiter.FastAPILimiter.redis = AsyncMock()
-# This prevents the app from trying to connect to Redis during startup
+
+# Prevents the app from trying to connect to a real Redis during startup
 fastapi_limiter.FastAPILimiter.init = AsyncMock()
+
+# Fixes: TypeError: 'NoneType' object is not callable
+# This mock provides a fake "user identifier" (like an IP) for the limiter logic
+fastapi_limiter.FastAPILimiter.identifier = AsyncMock(return_value="test-user")
+
+# Prevents errors if the "rate limit exceeded" callback is ever triggered
+fastapi_limiter.FastAPILimiter.http_callback = AsyncMock()
 
 # Ensure the app directory is in the path for GitHub Actions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -28,6 +36,7 @@ from app.database import Base, get_db
 # 2. DEBUGGING: CONFIRM ROUTES ARE LOADED
 @pytest.fixture(scope="session", autouse=True)
 def check_routes():
+    """Debug: Prints all registered routes to the build log."""
     print("\n--- Registered Routes ---")
     for route in app.routes:
         path = getattr(route, 'path', 'No Path Found')
@@ -45,6 +54,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
+    """Wipes and recreates the database for every single test."""
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
@@ -56,6 +66,7 @@ def db_session():
 # 4. TEST CLIENT FIXTURE
 @pytest.fixture(scope="function")
 def client(db_session):
+    """Overrides the FastAPI dependency injection to use the test DB."""
     def override_get_db():
         try:
             yield db_session
