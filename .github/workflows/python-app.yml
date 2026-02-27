@@ -38,7 +38,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Run Tests with pytest
-    run: |
+      run: |
         export PYTHONPATH=$(pwd)
         export JWT_SECRET="testsecret123"  # temporary secret for tests
         pytest tests/
