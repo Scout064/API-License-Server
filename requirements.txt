@@ -9,4 +9,4 @@ python-dotenv
 httpx
 PyJWT
 pydantic[email]
-fastapi-limiter
+fastapi-limiter==0.1.5
