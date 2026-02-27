@@ -1,12 +1,13 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import StaticPool
 
 TESTING = os.getenv("TESTING") == "1"
 
 if TESTING:
     # Use in-memory SQLite for tests
-    DATABASE_URL = "sqlite:///:memory:"
+    DATABASE_URL = "sqlite://"
 else:
     DB_USER = os.getenv("DB_USER")
     DB_PASS = os.getenv("DB_PASS")
@@ -22,7 +23,8 @@ else:
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if TESTING else {},
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
 
 SessionLocal = sessionmaker(
@@ -43,5 +45,9 @@ def get_db():
 
 # Create tables automatically in testing mode
 if TESTING:
-    from app import models
-    Base.metadata.create_all(bind=engine)
+    DATABASE_URL = "sqlite://"
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
