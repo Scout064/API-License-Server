@@ -5,27 +5,31 @@ import jwt
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
-# 1. PATH SETUP & EARLY PATCHING
+# 1. NEUTRALIZE RATE LIMITER IMMEDIATELY
+# We must do this before importing the app so the routes use the mocked state.
+import fastapi_limiter
+# This satisfies the "if not FastAPILimiter.redis" check in the library
+fastapi_limiter.FastAPILimiter.redis = AsyncMock()
+# This prevents the app from trying to connect to Redis during startup
+fastapi_limiter.FastAPILimiter.init = AsyncMock()
+
 # Ensure the app directory is in the path for GitHub Actions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# Patch the limiter BEFORE importing the app to prevent Redis connection attempts
-with patch("fastapi_limiter.FastAPILimiter.init", new=AsyncMock()):
-    from app.main import app
-    from app.database import Base, get_db
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# 2. DEBUGGING FIXTURE
+# Now safe to import app components
+from app.main import app
+from app.database import Base, get_db
+
+# 2. DEBUGGING: CONFIRM ROUTES ARE LOADED
 @pytest.fixture(scope="session", autouse=True)
 def check_routes():
-    """Debug: Prints all registered routes to the build log."""
     print("\n--- Registered Routes ---")
     for route in app.routes:
-        # Check if it's a standard Route object with a path attribute
         path = getattr(route, 'path', 'No Path Found')
         print(f"Path: {path}")
     print("------------------------\n")
@@ -41,7 +45,6 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
-    """Wipes and recreates the database for every single test."""
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
@@ -53,7 +56,6 @@ def db_session():
 # 4. TEST CLIENT FIXTURE
 @pytest.fixture(scope="function")
 def client(db_session):
-    """Overrides the FastAPI dependency injection to use the test DB."""
     def override_get_db():
         try:
             yield db_session
