@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 TESTING = os.getenv("TESTING") == "1"
 
 if TESTING:
-    DATABASE_URL = "sqlite:///:memory:"
+    DATABASE_URL = "sqlite://"
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},
@@ -21,7 +21,10 @@ else:
     if not all([DB_USER, DB_PASS, DB_NAME, DB_HOST]):
         raise RuntimeError("DB_USER, DB_PASS, DB_NAME, DB_HOST required")
 
-    DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
+    DATABASE_URL = (
+        f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
+    )
+
     engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
@@ -39,9 +42,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# create tables immediately in testing
-if TESTING:
-    from app import models
-    Base.metadata.create_all(bind=engine)
