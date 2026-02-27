@@ -23,27 +23,25 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.database import Base, get_db
 
-# =========================================================================
-# CRITICAL FIX: You MUST import your models here.
-# If your models are in app/models.py, import them like this:
-# from app import models 
-# or 
-# from app.models import Client, License  # (Use your actual model names)
-# =========================================================================
-from app import models  # Ensure this line points to where your 'Client' model is
+# CRITICAL FIX: Import models so Base.metadata knows about the 'clients' table
+try:
+    from app import models 
+except ImportError:
+    # Fallback in case your directory structure requires a direct import
+    from app.models import Base as _
 
 # 2. DATABASE SETUP (In-Memory SQLite)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
-    poolclass=StaticPool, # Required for in-memory SQLite to persist between connections
+    poolclass=StaticPool, 
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @pytest.fixture(scope="function")
 def db_session():
-    # Now that 'models' are imported, this will successfully create the 'clients' table
+    # Tables are created here using the metadata from imported models
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
@@ -65,4 +63,27 @@ def client(db_session):
         yield c
     app.dependency_overrides.clear()
 
-# (Keep your existing admin_headers, reader_headers, etc. fixtures here)
+# 3. AUTHENTICATION FIXTURES
+# Re-adding these to fix the "fixture not found" error
+def generate_test_headers(role: str):
+    # Using the secret defined in your GitHub Actions environment
+    secret = os.getenv("JWT_SECRET", "testsecret123")
+    payload = {
+        "user_id": 99,
+        "role": role,
+        "exp": datetime.utcnow() + timedelta(hours=1)
+    }
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
+
+@pytest.fixture()
+def admin_headers():
+    return generate_test_headers("admin")
+
+@pytest.fixture()
+def reader_headers():
+    return generate_test_headers("reader")
+
+@pytest.fixture()
+def user_headers():
+    return generate_test_headers("user")
