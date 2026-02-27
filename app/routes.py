@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
-from app.models import ClientBase, Client, LicenseBase, License, hash_license_key
+from app.models import ClientBase, Client, LicenseBase, License, hash_license_key, ClientORM, LicenseORM
 from app.database import get_db
 from app.auth import require_role
 from fastapi_limiter.depends import RateLimiter
