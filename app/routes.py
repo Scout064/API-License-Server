@@ -6,7 +6,6 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.database import get_db
-from app import schemas
 from app.auth import require_role
 from app.models import LicenseORM, ClientORM
 from app.auth import hash_license_key
