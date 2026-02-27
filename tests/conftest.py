@@ -1,6 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+JWT_SECRET = os.getenv("JWT_SECRET", "fallback_test_secret")
 
 import pytest
 from unittest.mock import AsyncMock, patch
