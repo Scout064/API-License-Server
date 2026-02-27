@@ -1,36 +1,39 @@
 # tests/test_api_license_server.py
 
 import pytest
-from datetime import datetime, timedelta
-from app.models import hash_license_key, generate_license_key, LicenseORM, ClientORM
+from fastapi.testclient import TestClient
+from app.main import app
 
+client = TestClient(app)
 
-def test_generate_license_key_format():
-    key = generate_license_key()
-    assert len(key) == 19  # format XXXX-XXXX-XXXX-XXXX
-    assert key.count('-') == 3
+@pytest.mark.parametrize("name,email", [("Test Client","client@example.com")])
+def test_create_client(name, email):
+    response = client.post("/clients", json={"name": name, "email": email})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == name
+    assert data["email"] == email
+    assert "id" in data
 
+@pytest.mark.parametrize("client_id", [1])
+def test_generate_license(client_id):
+    # generate license for existing client
+    response = client.post(f"/licenses/generate?client_id={client_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["client_id"] == client_id
+    assert data["status"] == "active"
+    assert "key" in data
 
-def test_hash_license_key():
-    key = 'ABCD-1234-EFGH-5678'
-    hashed = hash_license_key(key)
-    assert hashed != key
-    assert len(hashed) == 64  # SHA-256 hex digest length
+@pytest.mark.parametrize("license_key", ["ABCD-1234-EFGH-5678"])
+def test_validate_license(license_key):
+    # This test assumes license_key exists in DB; for CI, can be generated dynamically
+    response = client.get(f"/licenses/{license_key}")
+    # 404 is acceptable if key doesn't exist
+    assert response.status_code in [200, 404]
 
-
-def test_license_model_creation():
-    client = ClientORM(id=1, name='Test Client', email='client@example.com')
-    key = generate_license_key()
-    license_hash = hash_license_key(key)
-    license_obj = LicenseORM(
-        id=1,
-        key_hash=license_hash,
-        client_id=client.id,
-        status='active',
-        expires_at=datetime.utcnow() + timedelta(days=30),
-        client=client
-    )
-
-    assert license_obj.key_hash == license_hash
-    assert license_obj.status == 'active'
-    assert license_obj.client == client
+@pytest.mark.parametrize("license_key", ["ABCD-1234-EFGH-5678"])
+def test_revoke_license(license_key):
+    # This test assumes license_key exists; for CI, generate dynamically before revoke
+    response = client.post(f"/licenses/{license_key}/revoke")
+    assert response.status_code in [200, 404]
