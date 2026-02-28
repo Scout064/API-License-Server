@@ -22,7 +22,6 @@ This hardened version includes:
 ## Features
 
 ### Core Functionality
-
 * Create and manage clients
 * Generate secure license keys
 * Validate licenses
@@ -30,7 +29,6 @@ This hardened version includes:
 * Optional expiration dates
 
 ### Security Enhancements
-
 * SHA-256 hashed license keys
 * JWT tokens with expiration
 * Strict HS256 algorithm enforcement
@@ -57,12 +55,23 @@ Client → HTTPS → Apache → FastAPI → MariaDB
 
 ---
 
-## Roles (RBAC)
+## Prerequisites
 
-| Role   | Permissions                                        |
-| ------ | -------------------------------------------------- |
-| admin  | Create clients, generate licenses, revoke licenses |
-| reader | View/validate licenses only                        |
+Before running the installation, ensure your server meets the following requirements:
+
+* **Operating System:** An `apt`-based Linux distribution (Debian or Ubuntu).
+* **Database:** MariaDB version **10.4 or higher** is a hard requirement.
+* **Permissions:** You must have `sudo` privileges to execute the installer.
+
+### Adding a user to the sudo group
+
+If your current user is not in the sudo group, log in as `root` (or use `su -`) and run:
+
+```
+usermod -aG sudo yourusername
+```
+
+*Note: You must log out and log back in for changes to take effect.*
 
 ---
 
@@ -70,53 +79,53 @@ Client → HTTPS → Apache → FastAPI → MariaDB
 
 ### 1. Clone Repository
 
-```bash
+Use `git` to clone the source code to your local machine:
+
+```
 git clone https://github.com/Scout064/API-License-Server.git
 cd API-License-Server
 ```
 
 ### 2. Run Secure Installer
 
-```bash
+Make the script executable and run it. The script will automatically check for and install dependencies (Apache2, MariaDB-Server, Python, etc.) based on your choices.
+
+```
 chmod +x install.sh
 ./install.sh
 ```
 
 You will be prompted for:
 
-* Database Host
-* Database Name
-* Database User
-* Database Password
-* JWT Secret (auto-generated if left empty)
+* Database Host, Name, User, and Password
+* JWT Secret (leave empty to auto-generate)
+* ServerName (e.g., api.yourdomain.com)
+* SSL Preference (Certbot/Let's Encrypt or Self-Signed)
 
-No default credentials are used.
+### 3. Finalize Apache
 
-### 3. Configure Apache
-
-Copy:
+The installer creates a configuration at `/etc/apache2/sites-available/licenseapi.conf`. If you did not use the automated SSL setup, ensure you edit this file with your certificate paths:
 
 ```
-apache-vhost.conf
+sudo a2enmod proxy proxy_http headers ssl rewrite
+sudo a2ensite licenseapi.conf
+sudo systemctl restart apache2
 ```
 
-Edit:
+---
 
-* ServerName
-* SSL certificate paths
+## Roles (RBAC)
 
-Enable required modules:
-
-```bash
-a2enmod proxy proxy_http headers ssl
-systemctl reload apache2
-```
+| Role | Permissions |
+| --- | --- |
+| admin | Create clients, generate licenses, revoke licenses |
+| reader | View/validate licenses only |
 
 ---
 
 ## Environment Variables
 
-The server requires the following variables in `.env`:
+The server requires a `.env` file in `/var/www/licenseapi/`:
 
 ```
 DB_HOST=
@@ -126,134 +135,33 @@ DB_PASS=
 JWT_SECRET=
 ```
 
-If any are missing, the server will refuse to start.
-
----
-
-## Database Schema
-
-### Clients Table
-
-* id
-* name
-* email
-* created_at
-
-### Licenses Table
-
-* id
-* key_hash (SHA-256)
-* client_id
-* status (active / revoked)
-* expires_at
-* created_at
-
-License keys are never stored in plaintext.
-
----
-
-## Authentication
-
-All protected routes require a JWT token.
-
-Send in header:
-
-```
-Authorization: Bearer <token>
-```
-
-### JWT Payload Example (Admin)
-
-```json
-{
-  "sub": 1,
-  "role": "admin",
-  "exp": 1735689600
-}
-```
-
-### JWT Payload Example (Reader)
-
-```json
-{
-  "sub": 2,
-  "role": "reader",
-  "exp": 1735689600
-}
-```
-
----
-
-## OpenAPI Documentation
-
-Interactive docs:
-
-```
-https://yourdomain.com/docs
-```
-
-Alternative view:
-
-```
-https://yourdomain.com/redoc
-```
-
-To authenticate in Swagger:
-
-1. Click **Authorize**
-2. Enter:
-
-   ```
-   Bearer <your_token>
-   ```
-3. Click Authorize
-
 ---
 
 ## API Endpoints
 
 ### Clients (Admin Only)
 
-```
-POST   /clients
-GET    /clients
-GET    /clients/{client_id}
-```
+* `POST /clients` - Create a new client
+* `GET /clients` - List all clients
 
 ### Licenses
 
-```
-POST   /licenses/generate          (admin)
-GET    /licenses/{license_key}     (reader/admin)
-POST   /licenses/{license_key}/revoke  (admin)
-```
+* `POST /licenses/generate?client_id=1` (Admin) - Generate a new key
+* `GET /licenses/{license_key}` (Reader/Admin) - Validate a key
+* `POST /licenses/{license_key}/revoke` (Admin) - Revoke a key
 
 ---
 
-## curl Examples
+## curl Example: Generate License
 
-### Create Client
-
-```bash
-curl -X POST https://yourdomain.com/clients \
-  -H "Authorization: Bearer <admin_token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "name": "Test Client",
-        "email": "client@example.com"
-      }'
 ```
-
-### Generate License
-
-```bash
-curl -X POST "https://yourdomain.com/licenses/generate?client_id=1" \
+curl -X POST "[https://yourdomain.com/licenses/generate?client_id=1](https://yourdomain.com/licenses/generate?client_id=1)" \
   -H "Authorization: Bearer <admin_token>"
 ```
 
-Response:
+**Response:**
 
-```json
+```
 {
   "id": 5,
   "client_id": 1,
@@ -263,124 +171,18 @@ Response:
 }
 ```
 
-⚠ The plaintext key is returned only once.
-
-### Validate License
-
-```bash
-curl -X GET https://yourdomain.com/licenses/ABCD-1234-EFGH-5678 \
-  -H "Authorization: Bearer <reader_token>"
-```
-
-### Revoke License
-
-```bash
-curl -X POST https://yourdomain.com/licenses/ABCD-1234-EFGH-5678/revoke \
-  -H "Authorization: Bearer <admin_token>"
-```
-
----
-
-## Rate Limiting
-
-Default limits:
-
-* 5/minute → license generation
-* 5/minute → revocation
-* 10/minute → validation
-* 5/minute → client creation
-
-If exceeded:
-
-```
-HTTP 429 Too Many Requests
-```
-
-Response:
-
-```json
-{
-  "detail": "Rate limit exceeded"
-}
-```
+*⚠ The plaintext key is only shown once during generation.*
 
 ---
 
 ## Security Model
 
-### License Keys
-
-* Generated using `secrets`
-* Format: `XXXX-XXXX-XXXX-XXXX`
-* Hashed using SHA-256 before storage
-* Plaintext returned only once
-
-### JWT Security
-
-* HS256 algorithm
-* Expiration enforced
-* Role claim required
-* Algorithm strictly validated
-
-### Deployment Security
-
-* HTTP redirected to HTTPS
-* HSTS enabled (1 year)
-* Secure headers:
-
-  * X-Content-Type-Options
-  * X-Frame-Options
-  * Content-Security-Policy
-  * X-XSS-Protection
-* Service runs as non-root user
-* Binds to 127.0.0.1
-* Reverse proxy required
-* No direct DB exposure
-
----
-
-## Development Mode
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run locally:
-
-```bash
-uvicorn app.main:app --reload
-```
-
----
-
-## Production Recommendations
-
-* Use strong random JWT secret
-* Restrict DB user permissions
-* Only expose port 443
-* Enable firewall rules
-* Monitor logs for repeated failures
-* Rotate JWT secret periodically
-* Backup database regularly
+* **License Keys:** Generated using `secrets` and stored as SHA-256 hashes.
+* **JWT:** Uses HS256 algorithm with enforced expiration and role claims.
+* **Deployment:** Service runs as a dedicated `licenseapi` non-root user. Apache enforces HSTS and secure headers (CSP, X-Frame-Options).
 
 ---
 
 ## License
 
 Public Domain (CC0-1.0)
-
----
-
-## Security Summary
-
-This hardened version protects against:
-
-* SQL injection
-* JWT algorithm confusion
-* Token replay attacks
-* License brute force attempts
-* Plaintext key leakage
-* Privilege escalation
-* Insecure deployment defaults
