@@ -40,10 +40,6 @@ if [ "$UPDATE_MODE" = true ]; then
     echo "Updating dependencies..."
     cd "$APP_DIR"
     pip install -r requirements.txt --break-system-packages || pip install -r requirements.txt
-    
-    # Extract DB credentials from existing .env to apply schema updates
-    export $(grep -v '^#' "$APP_DIR/.env" | xargs)
-    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$APP_DIR/schema.sql"
 
     chown -R licenseapi:licenseapi "$APP_DIR"
     systemctl start licenseapi
