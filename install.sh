@@ -3,6 +3,8 @@ set -e
 
 echo "=== Secure API License Server Installer ==="
 
+APP_DIR="/var/www/licenseapi"
+
 # ---------------------------------------------------------
 # 1. Gather User Inputs
 # ---------------------------------------------------------
@@ -23,33 +25,43 @@ if [[ "$USE_REVERSE_PROXY" =~ ^[Nn]$ ]]; then
 fi
 
 # ---------------------------------------------------------
-# 2. Environment Setup
+# 2. File Migration & Environment Setup
 # ---------------------------------------------------------
+echo "Creating application directory at $APP_DIR..."
+sudo mkdir -p $APP_DIR
+sudo cp -r ./* $APP_DIR/
+
 if [ -z "$JWT_SECRET" ]; then
   JWT_SECRET=$(openssl rand -hex 64)
   echo "Generated JWT secret."
 fi
 
 echo "Creating .env file..."
-cat <<EOF > .env
+sudo bash -c "cat <<EOF > $APP_DIR/.env
 DB_HOST=$DB_HOST
 DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASS=$DB_PASS
 JWT_SECRET=$JWT_SECRET
-EOF
+EOF"
 
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
+cd $APP_DIR
+# Using sudo to ensure dependencies install correctly for the system user
+sudo pip install -r requirements.txt || pip install -r requirements.txt
 
 echo "Applying database schema..."
-mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < schema.sql
+mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < $APP_DIR/schema.sql
 
 # ---------------------------------------------------------
 # 3. Systemd Service Setup
 # ---------------------------------------------------------
 echo "Creating system user..."
 sudo useradd -r -s /bin/false licenseapi || true
+
+echo "Setting strict ownership and permissions..."
+sudo chown -R licenseapi:licenseapi $APP_DIR
+sudo chmod 600 $APP_DIR/.env
 
 echo "Creating systemd service..."
 sudo tee /etc/systemd/system/licenseapi.service > /dev/null <<SERVICE
@@ -60,10 +72,10 @@ After=network.target
 [Service]
 User=licenseapi
 Group=licenseapi
-WorkingDirectory=$(pwd)
+WorkingDirectory=$APP_DIR
 ExecStart=$(which uvicorn) app.main:app --host 127.0.0.1 --port 8000
 Restart=always
-EnvironmentFile=$(pwd)/.env
+EnvironmentFile=$APP_DIR/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -88,6 +100,7 @@ if [[ "$USE_REVERSE_PROXY" =~ ^[Yy]$ ]]; then
     sudo tee $VHOST_CONF > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName $SERVER_NAME
+    DocumentRoot $APP_DIR
 
     ProxyPreserveHost On
     ProxyPass / http://127.0.0.1:8000/
@@ -128,6 +141,7 @@ else
 
 <VirtualHost *:443>
     ServerName $SERVER_NAME
+    DocumentRoot $APP_DIR
 
     SSLEngine on
     SSLCertificateFile $CERT_FILE
@@ -173,5 +187,5 @@ echo "Please copy and save this secret in a secure location (e.g., a password ma
 echo "You will need this exact string to generate valid JSON Web Tokens (JWT) "
 echo "to authenticate against your API endpoints."
 echo ""
-echo "If you lose this key, you can find it in the .env file in this directory."
+echo "If you lose this key, you can find it in: $APP_DIR/.env"
 echo "=========================================================================="
