@@ -2,13 +2,33 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from app.models import ClientBase, Client, LicenseBase, License, hash_license_key, ClientORM, LicenseORM
 from app.database import get_db
-from app.auth import require_role
+from app.auth import require_role, get_current_user
 from fastapi_limiter.depends import RateLimiter
 import secrets
 
 router = APIRouter()
 
 LICENSE_KEY_REGEX = r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$'
+
+ROLE_HIERARCHY = {
+    "user": 1,
+    "reader": 2,
+    "admin": 3,
+}
+
+def require_role(required_role: str):
+    def role_checker(user=Depends(get_current_user)):
+        user_role = user.get("role")
+
+        if user_role not in ROLE_HIERARCHY:
+            raise HTTPException(status_code=403, detail="Invalid role")
+
+        if ROLE_HIERARCHY[user_role] < ROLE_HIERARCHY[required_role]:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        return user
+
+    return role_checker
 
 # ------------------- CLIENT ROUTES -------------------
 
