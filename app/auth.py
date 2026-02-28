@@ -28,7 +28,7 @@ def decode_token(token: str):
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as e:
-        print("JWT ERROR:", str(e))
+        print("JWT ERROR:", repr(e))
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
 def require_role(role: str):
