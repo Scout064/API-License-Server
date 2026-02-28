@@ -31,7 +31,7 @@ fi
 echo "--- Installing Dependencies ---"
 sudo apt-get update
 
-CORE_DEPS=("mariadb-server" "mariadb-client" "python3" "python3-pip" "apache2")
+CORE_DEPS=("mariadb-server" "mariadb-client" "python3" "python3-pip" "apache2" "redis-server")
 for pkg in "${CORE_DEPS[@]}"; do
     if ! dpkg -l | grep -q "ii  $pkg "; then
         sudo apt-get install -y "$pkg"
