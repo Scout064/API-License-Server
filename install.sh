@@ -7,13 +7,22 @@ APP_DIR="/var/www/licenseapi"
 UPDATE_MODE=false
 
 # Check for --update flag
+UPDATE_MODE=false
 if [[ "${1:-}" == "--update" ]]; then
     UPDATE_MODE=true
+    
+    # --- Root Check: ONLY runs during update ---
+    if [ "$EUID" -ne 0 ]; then 
+      echo "❌ Error: The --update routine must be run as root or with sudo."
+      echo "Please try: sudo $0 --update"
+      exit 1
+    fi
+    
     echo "🔄 Update mode detected. Refreshing app files..."
 fi
 
 # ---------------------------------------------------------
-# 1. Update Routine (If flag is present)
+# 1. Update Routine (Runs only if flag was present)
 # ---------------------------------------------------------
 if [ "$UPDATE_MODE" = true ]; then
     if [ ! -d "$APP_DIR" ]; then
@@ -22,23 +31,22 @@ if [ "$UPDATE_MODE" = true ]; then
     fi
 
     echo "Stopping service..."
-    sudo systemctl stop licenseapi
+    systemctl stop licenseapi
 
     echo "Syncing new files..."
-    # Copy all files except the .env file to preserve production credentials
-    sudo rsync -av --exclude='.env' ./* "$APP_DIR/"
+    # Using rsync to update the app while preserving the production .env file
+    rsync -av --exclude='.env' ./* "$APP_DIR/"
     
     echo "Updating dependencies..."
     cd "$APP_DIR"
-    sudo pip install -r requirements.txt --break-system-packages || sudo pip install -r requirements.txt
+    pip install -r requirements.txt --break-system-packages || pip install -r requirements.txt
     
-    echo "Applying schema updates (if any)..."
-    # Note: Assumes DB_ credentials can be pulled from existing .env
-    export $(sudo grep -v '^#' "$APP_DIR/.env" | xargs)
+    # Extract DB credentials from existing .env to apply schema updates
+    export $(grep -v '^#' "$APP_DIR/.env" | xargs)
     mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$APP_DIR/schema.sql"
 
-    sudo chown -R licenseapi:licenseapi "$APP_DIR"
-    sudo systemctl start licenseapi
+    chown -R licenseapi:licenseapi "$APP_DIR"
+    systemctl start licenseapi
     echo "✅ Update successful!"
     exit 0
 fi
