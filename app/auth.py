@@ -13,9 +13,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 security = HTTPBearer()
 
+ROLE_HIERARCHY = {
+    "user": 1,
+    "reader": 2,
+    "admin": 3,
+}
+
 def create_token(user_id: int, role: str) -> str:
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "role": role,
         "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         "iat": datetime.utcnow()
@@ -31,10 +37,13 @@ def decode_token(token: str):
         print("JWT ERROR:", repr(e))
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
-def require_role(role: str):
+def require_role(required_role: str):
     def role_checker(credentials: HTTPAuthorizationCredentials = Depends(security)):
         payload = decode_token(credentials.credentials)
-        if payload.get("role") != role:
+        user_role = payload.get("role")
+        if user_role not in ROLE_HIERARCHY:
+            raise HTTPException(status_code=403, detail="Invalid role")
+        if ROLE_HIERARCHY[user_role] < ROLE_HIERARCHY[required_role]:
             raise HTTPException(status_code=403, detail="Insufficient privileges")
         return payload
     return role_checker
