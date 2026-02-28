@@ -2,6 +2,9 @@
 import os
 import jwt
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+load_dotenv("/var/www/licenseapi/.env")
 
 def main():
     print("=== API License Server - JWT Generator ===")
