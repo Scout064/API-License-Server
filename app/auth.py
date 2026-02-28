@@ -27,7 +27,7 @@ def decode_token(token: str):
         return jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except JWTError as e:
+    except jwt.InvalidTokenError as e:
         print("JWT ERROR:", str(e))
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
