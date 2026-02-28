@@ -1,12 +1,12 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-echo "=== Secure API License Server Installer ==="
+echo "=== Secure API License Server Installer (Hardened) ==="
 
 APP_DIR="/var/www/licenseapi"
 
 # ---------------------------------------------------------
-# 1. Gather User Inputs (First, to determine dependencies)
+# 1. Gather User Inputs
 # ---------------------------------------------------------
 read -p "Database Host (e.g., 127.0.0.1): " DB_HOST
 read -p "Database Name: " DB_NAME
@@ -28,48 +28,70 @@ fi
 # ---------------------------------------------------------
 # 2. Dependency Resolution
 # ---------------------------------------------------------
-echo ""
-echo "--- Checking & Resolving Dependencies ---"
-
+echo "--- Installing Dependencies ---"
 sudo apt-get update
 
-# Base requirements
 CORE_DEPS=("mariadb-server" "mariadb-client" "python3" "python3-pip" "apache2")
 for pkg in "${CORE_DEPS[@]}"; do
     if ! dpkg -l | grep -q "ii  $pkg "; then
-        echo "📦 Installing core dependency: $pkg..."
         sudo apt-get install -y "$pkg"
-    else
-        echo "✅ $pkg is already installed."
     fi
 done
 
-# Conditional Dependency: Certbot
 if [[ "$USE_CERTBOT" =~ ^[Yy]$ ]]; then
-    if ! command -v certbot &> /dev/null; then
-        echo "📦 Installing Certbot as requested..."
-        sudo apt-get install -y certbot python3-certbot-apache
-    fi
+    sudo apt-get install -y certbot python3-certbot-apache
 fi
 
-# Conditional Dependency: OpenSSL (Only if not using Certbot/Proxy and need self-signed)
 if [[ "$USE_REVERSE_PROXY" =~ ^[Nn]$ ]] && [[ "$USE_CERTBOT" =~ ^[Nn]$ ]]; then
-    if ! command -v openssl &> /dev/null; then
-        echo "📦 Installing OpenSSL for self-signed certificate generation..."
-        sudo apt-get install -y openssl
-    fi
+    sudo apt-get install -y openssl
 fi
 
 # ---------------------------------------------------------
-# 3. File Migration & Environment Setup
+# 3. MariaDB Hardening
 # ---------------------------------------------------------
-echo "Moving application to $APP_DIR..."
-sudo mkdir -p $APP_DIR
-sudo cp -r ./* $APP_DIR/
+echo "--- Hardening MariaDB ---"
+
+sudo systemctl enable mariadb
+sudo systemctl start mariadb
+
+# Secure root access (uses unix_socket auth by default on Ubuntu)
+sudo mysql <<SECUREMYSQL
+DELETE FROM mysql.user WHERE User='';
+DROP DATABASE IF EXISTS test;
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+UPDATE mysql.user SET Host='localhost' WHERE User='root';
+FLUSH PRIVILEGES;
+SECUREMYSQL
+
+# Force local bind only (if DB_HOST is localhost)
+if [[ "$DB_HOST" == "127.0.0.1" ]] || [[ "$DB_HOST" == "localhost" ]]; then
+    sudo sed -i 's/^bind-address.*/bind-address = 127.0.0.1/' /etc/mysql/mariadb.conf.d/50-server.cnf
+fi
+
+# Disable LOCAL INFILE (security risk)
+if ! grep -q "local-infile=0" /etc/mysql/mariadb.conf.d/50-server.cnf; then
+    echo "local-infile=0" | sudo tee -a /etc/mysql/mariadb.conf.d/50-server.cnf
+fi
+
+sudo systemctl restart mariadb
+
+# Create DB and least-privileged user
+sudo mysql <<EOF
+CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${DB_USER}'@'${DB_HOST}' IDENTIFIED BY '${DB_PASS}';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER ON \`${DB_NAME}\`.* TO '${DB_USER}'@'${DB_HOST}';
+FLUSH PRIVILEGES;
+EOF
+
+# ---------------------------------------------------------
+# 4. App Setup
+# ---------------------------------------------------------
+echo "Deploying application..."
+sudo mkdir -p "$APP_DIR"
+sudo cp -r ./* "$APP_DIR/"
 
 if [ -z "$JWT_SECRET" ]; then
   JWT_SECRET=$(openssl rand -hex 64)
-  echo "Generated JWT secret."
 fi
 
 sudo bash -c "cat <<EOF > $APP_DIR/.env
@@ -80,22 +102,19 @@ DB_PASS=$DB_PASS
 JWT_SECRET=$JWT_SECRET
 EOF"
 
-echo "Installing Python dependencies..."
-cd $APP_DIR
+cd "$APP_DIR"
 sudo pip install -r requirements.txt --break-system-packages || sudo pip install -r requirements.txt
 
-# Ensure MariaDB is running before schema import
-sudo systemctl start mariadb
-
 echo "Applying database schema..."
-mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < $APP_DIR/schema.sql
+mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$APP_DIR/schema.sql"
 
 # ---------------------------------------------------------
-# 4. Systemd Service Setup
+# 5. Systemd Service
 # ---------------------------------------------------------
 sudo useradd -r -s /bin/false licenseapi || true
-sudo chown -R licenseapi:licenseapi $APP_DIR
-sudo chmod 600 $APP_DIR/.env
+sudo chown -R licenseapi:licenseapi "$APP_DIR"
+sudo chmod 750 "$APP_DIR"
+sudo chmod 600 "$APP_DIR/.env"
 
 sudo tee /etc/systemd/system/licenseapi.service > /dev/null <<SERVICE
 [Unit]
@@ -108,6 +127,10 @@ Group=licenseapi
 WorkingDirectory=$APP_DIR
 ExecStart=$(which uvicorn) app.main:app --host 127.0.0.1 --port 8000
 Restart=always
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
 EnvironmentFile=$APP_DIR/.env
 
 [Install]
@@ -119,17 +142,15 @@ sudo systemctl enable licenseapi
 sudo systemctl start licenseapi
 
 # ---------------------------------------------------------
-# 5. Apache2 & SSL Configuration
+# 6. Apache + SSL
 # ---------------------------------------------------------
 sudo a2enmod proxy proxy_http headers ssl rewrite
 VHOST_CONF="/etc/apache2/sites-available/licenseapi.conf"
 
 if [[ "$USE_REVERSE_PROXY" =~ ^[Yy]$ ]]; then
-    # HTTP Only for proxy usage
-    sudo tee $VHOST_CONF > /dev/null <<EOF
+    sudo tee "$VHOST_CONF" > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName $SERVER_NAME
-    DocumentRoot $APP_DIR
     ProxyPreserveHost On
     ProxyPass / http://127.0.0.1:8000/
     ProxyPassReverse / http://127.0.0.1:8000/
@@ -142,13 +163,12 @@ else
         CERT_FILE="/etc/letsencrypt/live/$SERVER_NAME/fullchain.pem"
         KEY_FILE="/etc/letsencrypt/live/$SERVER_NAME/privkey.pem"
     else
-        # Self-signed
         CERT_FILE="/etc/ssl/certs/licenseapi.crt"
         KEY_FILE="/etc/ssl/private/licenseapi.key"
         sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$SERVER_NAME"
     fi
 
-    sudo tee $VHOST_CONF > /dev/null <<EOF
+    sudo tee "$VHOST_CONF" > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName $SERVER_NAME
     Redirect permanent / https://$SERVER_NAME/
@@ -156,7 +176,6 @@ else
 
 <VirtualHost *:443>
     ServerName $SERVER_NAME
-    DocumentRoot $APP_DIR
     SSLEngine on
     SSLCertificateFile $CERT_FILE
     SSLCertificateKeyFile $KEY_FILE
@@ -171,12 +190,7 @@ sudo a2ensite licenseapi.conf
 sudo a2dissite 000-default.conf || true
 sudo systemctl restart apache2
 
-# ---------------------------------------------------------
-# 6. Final Output
-# ---------------------------------------------------------
-echo ""
 echo "=========================================================================="
 echo "✅ Installation complete!"
 echo "🚨 YOUR JWT SECRET: $JWT_SECRET"
 echo "=========================================================================="
-echo "Save this secret! It is required for API access tokens."
