@@ -38,6 +38,8 @@ for pkg in "${CORE_DEPS[@]}"; do
     fi
 done
 
+sudo systemctl enable --now redis-server
+
 if [[ "$USE_CERTBOT" =~ ^[Yy]$ ]]; then
     sudo apt-get install -y certbot python3-certbot-apache
 fi
