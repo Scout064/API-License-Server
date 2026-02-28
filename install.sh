@@ -110,7 +110,23 @@ EOF"
 cd "$APP_DIR"
 sudo pip install -r requirements.txt --break-system-packages || sudo pip install -r requirements.txt
 
-echo "Applying database schema..."
+echo "Creating database and granting privileges..."
+
+sudo mysql <<EOF
+CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS '${DB_USER}'@'${DB_HOST}'
+  IDENTIFIED BY '${DB_PASS}';
+
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* 
+  TO '${DB_USER}'@'${DB_HOST}';
+
+FLUSH PRIVILEGES;
+EOF
+
+echo "Applying schema as app user..."
 mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$APP_DIR/schema.sql"
 
 # ---------------------------------------------------------
