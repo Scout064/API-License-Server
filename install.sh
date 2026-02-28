@@ -226,6 +226,7 @@ fi
 sudo a2ensite licenseapi.conf
 sudo a2dissite 000-default.conf || true
 sudo systemctl restart apache2
+sudo systemctl enable --now licenseapi 
 
 echo "=========================================================================="
 echo "✅ Installation complete!"
