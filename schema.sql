@@ -1,6 +1,3 @@
-CREATE DATABASE IF NOT EXISTS license_server;
-USE license_server;
-
 CREATE TABLE clients (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
