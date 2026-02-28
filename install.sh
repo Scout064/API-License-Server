@@ -215,3 +215,4 @@ echo "==========================================================================
 echo "✅ Installation complete!"
 echo "🚨 YOUR JWT SECRET: $JWT_SECRET"
 echo "=========================================================================="
+echo "Save this secret! It is required for API access tokens."
