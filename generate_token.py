@@ -26,7 +26,7 @@ def main():
 
     # Match the payload structure defined in your auth.py
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "role": role,
         "exp": datetime.utcnow() + timedelta(days=days),
         "iat": datetime.utcnow()
