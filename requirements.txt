@@ -11,3 +11,4 @@ PyJWT
 pydantic[email]
 fastapi-limiter==0.1.5
 redis[hiredis]
+python-dotenv
