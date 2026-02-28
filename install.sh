@@ -47,28 +47,33 @@ if [[ "$USE_REVERSE_PROXY" =~ ^[Nn]$ ]] && [[ "$USE_CERTBOT" =~ ^[Nn]$ ]]; then
 fi
 
 # ---------------------------------------------------------
-# 3. MariaDB Hardening
+# 3. MariaDB Hardening (MariaDB 10.4+ Safe)
 # ---------------------------------------------------------
 echo "--- Hardening MariaDB ---"
 
 sudo systemctl enable mariadb
 sudo systemctl start mariadb
 
-# Secure root access (uses unix_socket auth by default on Ubuntu)
-sudo mysql <<SECUREMYSQL
-DELETE FROM mysql.user WHERE User='';
+sudo mysql <<'SECUREMYSQL'
+-- Remove anonymous users
+DELETE FROM mysql.global_priv WHERE User='';
+
+-- Remove test database
 DROP DATABASE IF EXISTS test;
-DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
-UPDATE mysql.user SET Host='localhost' WHERE User='root';
+DELETE FROM mysql.db WHERE Db='test' OR Db LIKE 'test\_%';
+
+-- Ensure root uses unix_socket only (default secure setup)
+ALTER USER 'root'@'localhost' IDENTIFIED VIA unix_socket;
+
 FLUSH PRIVILEGES;
 SECUREMYSQL
 
-# Force local bind only (if DB_HOST is localhost)
+# Bind to localhost only (if local DB)
 if [[ "$DB_HOST" == "127.0.0.1" ]] || [[ "$DB_HOST" == "localhost" ]]; then
     sudo sed -i 's/^bind-address.*/bind-address = 127.0.0.1/' /etc/mysql/mariadb.conf.d/50-server.cnf
 fi
 
-# Disable LOCAL INFILE (security risk)
+# Disable LOCAL INFILE
 if ! grep -q "local-infile=0" /etc/mysql/mariadb.conf.d/50-server.cnf; then
     echo "local-infile=0" | sudo tee -a /etc/mysql/mariadb.conf.d/50-server.cnf
 fi
