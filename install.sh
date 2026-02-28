@@ -6,9 +6,9 @@ echo "=== Secure API License Server Installer ==="
 APP_DIR="/var/www/licenseapi"
 
 # ---------------------------------------------------------
-# 1. Gather User Inputs
+# 1. Gather User Inputs (First, to determine dependencies)
 # ---------------------------------------------------------
-read -p "Database Host: " DB_HOST
+read -p "Database Host (e.g., 127.0.0.1): " DB_HOST
 read -p "Database Name: " DB_NAME
 read -p "Database User: " DB_USER
 read -s -p "Database Password: " DB_PASS
@@ -18,16 +18,52 @@ echo ""
 
 echo "--- Web Server Configuration ---"
 read -p "Enter ServerName (e.g., api.yourdomain.com): " SERVER_NAME
-read -p "Are you using an external reverse proxy (e.g., Cloudflare, AWS ALB, Nginx front)? (y/n): " USE_REVERSE_PROXY
+read -p "Are you using an external reverse proxy? (y/n): " USE_REVERSE_PROXY
 
+USE_CERTBOT="n"
 if [[ "$USE_REVERSE_PROXY" =~ ^[Nn]$ ]]; then
-    read -p "Do you want to install Certbot to auto-generate Let's Encrypt SSL certificates? (y/n): " USE_CERTBOT
+    read -p "Use Certbot for Let's Encrypt SSL? (y/n): " USE_CERTBOT
 fi
 
 # ---------------------------------------------------------
-# 2. File Migration & Environment Setup
+# 2. Dependency Resolution
 # ---------------------------------------------------------
-echo "Creating application directory at $APP_DIR..."
+echo ""
+echo "--- Checking & Resolving Dependencies ---"
+
+sudo apt-get update
+
+# Base requirements
+CORE_DEPS=("mariadb-server" "mariadb-client" "python3" "python3-pip" "apache2")
+for pkg in "${CORE_DEPS[@]}"; do
+    if ! dpkg -l | grep -q "ii  $pkg "; then
+        echo "📦 Installing core dependency: $pkg..."
+        sudo apt-get install -y "$pkg"
+    else
+        echo "✅ $pkg is already installed."
+    fi
+done
+
+# Conditional Dependency: Certbot
+if [[ "$USE_CERTBOT" =~ ^[Yy]$ ]]; then
+    if ! command -v certbot &> /dev/null; then
+        echo "📦 Installing Certbot as requested..."
+        sudo apt-get install -y certbot python3-certbot-apache
+    fi
+fi
+
+# Conditional Dependency: OpenSSL (Only if not using Certbot/Proxy and need self-signed)
+if [[ "$USE_REVERSE_PROXY" =~ ^[Nn]$ ]] && [[ "$USE_CERTBOT" =~ ^[Nn]$ ]]; then
+    if ! command -v openssl &> /dev/null; then
+        echo "📦 Installing OpenSSL for self-signed certificate generation..."
+        sudo apt-get install -y openssl
+    fi
+fi
+
+# ---------------------------------------------------------
+# 3. File Migration & Environment Setup
+# ---------------------------------------------------------
+echo "Moving application to $APP_DIR..."
 sudo mkdir -p $APP_DIR
 sudo cp -r ./* $APP_DIR/
 
@@ -36,7 +72,6 @@ if [ -z "$JWT_SECRET" ]; then
   echo "Generated JWT secret."
 fi
 
-echo "Creating .env file..."
 sudo bash -c "cat <<EOF > $APP_DIR/.env
 DB_HOST=$DB_HOST
 DB_NAME=$DB_NAME
@@ -47,27 +82,25 @@ EOF"
 
 echo "Installing Python dependencies..."
 cd $APP_DIR
-# Using sudo to ensure dependencies install correctly for the system user
-sudo pip install -r requirements.txt || pip install -r requirements.txt
+sudo pip install -r requirements.txt --break-system-packages || sudo pip install -r requirements.txt
+
+# Ensure MariaDB is running before schema import
+sudo systemctl start mariadb
 
 echo "Applying database schema..."
 mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < $APP_DIR/schema.sql
 
 # ---------------------------------------------------------
-# 3. Systemd Service Setup
+# 4. Systemd Service Setup
 # ---------------------------------------------------------
-echo "Creating system user..."
 sudo useradd -r -s /bin/false licenseapi || true
-
-echo "Setting strict ownership and permissions..."
 sudo chown -R licenseapi:licenseapi $APP_DIR
 sudo chmod 600 $APP_DIR/.env
 
-echo "Creating systemd service..."
 sudo tee /etc/systemd/system/licenseapi.service > /dev/null <<SERVICE
 [Unit]
 Description=License API Server
-After=network.target
+After=network.target mariadb.service
 
 [Service]
 User=licenseapi
@@ -86,53 +119,35 @@ sudo systemctl enable licenseapi
 sudo systemctl start licenseapi
 
 # ---------------------------------------------------------
-# 4. Apache2 & SSL Setup
+# 5. Apache2 & SSL Configuration
 # ---------------------------------------------------------
-echo "Installing Apache2 and enabling required modules..."
-sudo apt-get update
-sudo apt-get install -y apache2
 sudo a2enmod proxy proxy_http headers ssl rewrite
-
 VHOST_CONF="/etc/apache2/sites-available/licenseapi.conf"
 
 if [[ "$USE_REVERSE_PROXY" =~ ^[Yy]$ ]]; then
-    echo "Configuring Apache for external reverse proxy (HTTP only)..."
+    # HTTP Only for proxy usage
     sudo tee $VHOST_CONF > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName $SERVER_NAME
     DocumentRoot $APP_DIR
-
     ProxyPreserveHost On
     ProxyPass / http://127.0.0.1:8000/
     ProxyPassReverse / http://127.0.0.1:8000/
-
-    ErrorLog \${APACHE_LOG_DIR}/license_error.log
-    CustomLog \${APACHE_LOG_DIR}/license_access.log combined
 </VirtualHost>
 EOF
-
 else
-    # We are handling SSL directly in Apache
     if [[ "$USE_CERTBOT" =~ ^[Yy]$ ]]; then
-        echo "Installing Certbot and generating Let's Encrypt certificates..."
-        sudo apt-get install -y certbot
-        
-        # Stop Apache temporarily so Certbot can bind to port 80 for verification
         sudo systemctl stop apache2 || true
         sudo certbot certonly --standalone -d "$SERVER_NAME" --non-interactive --agree-tos -m "admin@$SERVER_NAME"
-        
         CERT_FILE="/etc/letsencrypt/live/$SERVER_NAME/fullchain.pem"
         KEY_FILE="/etc/letsencrypt/live/$SERVER_NAME/privkey.pem"
     else
-        echo "Generating self-signed SSL certificates..."
+        # Self-signed
         CERT_FILE="/etc/ssl/certs/licenseapi.crt"
         KEY_FILE="/etc/ssl/private/licenseapi.key"
-        sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout "$KEY_FILE" -out "$CERT_FILE" \
-            -subj "/CN=$SERVER_NAME"
+        sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$SERVER_NAME"
     fi
 
-    echo "Configuring Apache VirtualHost with SSL..."
     sudo tee $VHOST_CONF > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName $SERVER_NAME
@@ -142,50 +157,26 @@ else
 <VirtualHost *:443>
     ServerName $SERVER_NAME
     DocumentRoot $APP_DIR
-
     SSLEngine on
     SSLCertificateFile $CERT_FILE
     SSLCertificateKeyFile $KEY_FILE
-
-    # HSTS
-    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
-
-    # Security Headers
-    Header always set X-Content-Type-Options "nosniff"
-    Header always set X-Frame-Options "DENY"
-    Header always set X-XSS-Protection "1; mode=block"
-    Header always set Content-Security-Policy "default-src 'self'"
-
     ProxyPreserveHost On
     ProxyPass / http://127.0.0.1:8000/
     ProxyPassReverse / http://127.0.0.1:8000/
-
-    ErrorLog \${APACHE_LOG_DIR}/license_error.log
-    CustomLog \${APACHE_LOG_DIR}/license_access.log combined
 </VirtualHost>
 EOF
 fi
 
-echo "Activating Apache configuration..."
 sudo a2ensite licenseapi.conf
 sudo a2dissite 000-default.conf || true
 sudo systemctl restart apache2
 
 # ---------------------------------------------------------
-# 5. Final Output & JWT Warning
+# 6. Final Output
 # ---------------------------------------------------------
 echo ""
 echo "=========================================================================="
-echo "✅ Installation complete! Your Secure API License Server is now running."
+echo "✅ Installation complete!"
+echo "🚨 YOUR JWT SECRET: $JWT_SECRET"
 echo "=========================================================================="
-echo ""
-echo "🚨 IMPORTANT: YOUR JWT SECRET 🚨"
-echo "--------------------------------------------------------------------------"
-echo "$JWT_SECRET"
-echo "--------------------------------------------------------------------------"
-echo "Please copy and save this secret in a secure location (e.g., a password manager)."
-echo "You will need this exact string to generate valid JSON Web Tokens (JWT) "
-echo "to authenticate against your API endpoints."
-echo ""
-echo "If you lose this key, you can find it in: $APP_DIR/.env"
-echo "=========================================================================="
+echo "Save this secret! It is required for API access tokens."
