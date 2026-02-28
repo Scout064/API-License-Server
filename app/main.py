@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from app.routes import router
 from app.database import engine, Base
 from app import models  # IMPORTANT: ensures models are registered
+from dotenv import load_dotenv
+load_dotenv("/var/www/licenseapi/.env")
 
 # Import Redis and the Limiter
 import redis.asyncio as redis
