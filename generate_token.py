@@ -2,13 +2,11 @@
 import os
 import jwt
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
-# Attempt to load the .env file if it exists in the current directory
+# Attempt to load the .env file in "/var/www/licenseapi"
 try:
-    with open("/var/www/licenseapi/.env", "r") as f:
-        for line in f:
-            if line.startswith("JWT_SECRET="):
-                os.environ["JWT_SECRET"] = line.strip().split("=", 1)[1]
+    load_dotenv("/var/www/licenseapi/.env")
 except FileNotFoundError:
     pass
 
