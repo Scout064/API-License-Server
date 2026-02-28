@@ -3,15 +3,6 @@ import os
 import jwt
 from datetime import datetime, timedelta
 
-# Attempt to load the .env file if it exists in the current directory
-try:
-    with open(".env", "r") as f:
-        for line in f:
-            if line.startswith("JWT_SECRET="):
-                os.environ["JWT_SECRET"] = line.strip().split("=", 1)[1]
-except FileNotFoundError:
-    pass
-
 def main():
     print("=== API License Server - JWT Generator ===")
     
