@@ -129,7 +129,7 @@ def issue_client_token(
     if not license_obj or license_obj.status != "active":
         raise HTTPException(status_code=403, detail="Invalid or revoked license")
 
-    token = create_token(client_id=client.id, role="reader")
+    token = create_token(user_id=client.id, role="reader")
 
     return {
         "access_token": token,
