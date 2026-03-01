@@ -30,7 +30,7 @@ jobs:
             const repo = process.env.GITHUB_REPOSITORY;
             const token = process.env.GITHUB_TOKEN;
             
-            // 1. Fetch releases from GitHub API
+            // 1. Fetch releases
             const response = await fetch(`https://api.github.com/repos/${repo}/releases`, {
               headers: { Authorization: `token ${token}` }
             });
@@ -41,54 +41,46 @@ jobs:
               process.exit(0);
             }
 
-            // 2. Pass 1: Find the absolute latest STABLE version for every Major.Minor branch
+            // 2. Identify Latest Stable per Minor (Resilient to non-semver)
             const latestStablePerMinor = {};
-            
             releases.forEach(rel => {
-              const version = rel.tag_name.replace(/^v/, '');
-              
-              // Rule: Only non-prereleases that are valid SemVer can be 'Supported'
-              if (semver.valid(version) && !rel.prerelease) {
-                const key = `${semver.major(version)}.${semver.minor(version)}`;
-                if (!latestStablePerMinor[key] || semver.gt(version, latestStablePerMinor[key])) {
-                  latestStablePerMinor[key] = version;
+              const v = rel.tag_name.replace(/^v/, '');
+              if (semver.valid(v) && !rel.prerelease) {
+                const key = `${semver.major(v)}.${semver.minor(v)}`;
+                if (!latestStablePerMinor[key] || semver.gt(v, latestStablePerMinor[key])) {
+                  latestStablePerMinor[key] = v;
                 }
               }
             });
 
-            // 3. Pass 2: Build the table rows based on your rules
+            // 3. Generate Table Rows
             const tableRows = releases.map(rel => {
-              const version = rel.tag_name.replace(/^v/, '');
-              let status = '❌'; // Default everything to unsupported
+              const v = rel.tag_name.replace(/^v/, '');
+              let status = '❌';
 
-              // A version is ONLY supported (✅) if:
-              // - It is valid SemVer
-              // - It is NOT marked as a pre-release on GitHub
-              // - It is the latest version in its minor branch (e.g., 2.1.5 vs 2.1.4)
-              if (semver.valid(version) && !rel.prerelease) {
-                const key = `${semver.major(version)}.${semver.minor(version)}`;
-                if (latestStablePerMinor[key] === version) {
-                  status = '✅';
-                }
+              if (semver.valid(v) && !rel.prerelease) {
+                const key = `${semver.major(v)}.${semver.minor(v)}`;
+                if (latestStablePerMinor[key] === v) status = '✅';
               }
-              
               return `| ${rel.tag_name} | ${status} |`;
             }).join('\n');
 
-            // 4. Update the SECURITY.md file
-            const filePath = 'SECURITY.md';
-            const content = fs.readFileSync(filePath, 'utf8');
-            const placeholder = '';
+            // 4. Reconstruct the entire SECURITY.md to match your format
+            const securityContent = `# Security Policy
 
-            // This Regex ensures we replace the old table while keeping the header
-            const tableHeader = `\n| Version | Supported |\n| ------- | --------- |`;
-            const newContent = content.replace(
-              new RegExp(`${placeholder}[\\s\\S]*`),
-              `${placeholder}${tableHeader}\n${tableRows}`
-            );
+            ## Supported Versions
 
-            fs.writeFileSync(filePath, newContent, 'utf8');
-            console.log("Successfully updated SECURITY.md");
+            | Version | Supported          |
+            | ------- | ------------------ |
+            ${tableRows}
+
+            ## Reporting a Vulnerability
+
+            Please report any security issues to [security@example.com](mailto:security@example.com).  
+            You will receive acknowledgment within 48 hours. Accepted reports will be fixed promptly and credited. Declined reports will include reasoning.`;
+
+            fs.writeFileSync('SECURITY.md', securityContent, 'utf8');
+            console.log("SECURITY.md has been reformatted and updated.");
           }
 
           updateSecurityPolicy();
