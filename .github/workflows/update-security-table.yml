@@ -1,0 +1,70 @@
+name: Update Security Policy Versions Table
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  update-security-policy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Generate Supported Versions Table
+        run: |
+          npm install semver
+          node <<'EOF'
+          const fs = require('fs');
+          const semver = require('semver');
+
+          // Get all tags
+          const tags = require('child_process')
+            .execSync('git tag')
+            .toString()
+            .split('\n')
+            .filter(t => t && !t.includes('beta')) // exclude beta releases
+            .map(t => t.replace(/^v/, ''))
+            .sort(semver.rcompare);
+
+          // Determine latest patch for each minor version
+          const latestPatch = {};
+          tags.forEach(tag => {
+            const key = `${semver.major(tag)}.${semver.minor(tag)}`;
+            if (!latestPatch[key] || semver.gt(tag, latestPatch[key])) {
+              latestPatch[key] = tag;
+            }
+          });
+
+          // Build markdown table
+          const table = tags.map(tag => {
+            const key = `${semver.major(tag)}.${semver.minor(tag)}`;
+            const supported = latestPatch[key] === tag ? '✅' : '❌';
+            return `| ${tag} | ${supported} |`;
+          }).join('\n');
+
+          // Update SECURITY.md
+          const filePath = '.github/SECURITY.md';
+          let content = fs.readFileSync(filePath, 'utf8');
+          content = content.replace(
+            /<!-- AUTO-GENERATED: Supported Versions Table -->[\s\S]*/,
+            `<!-- AUTO-GENERATED: Supported Versions Table -->\n${table}`
+          );
+          fs.writeFileSync(filePath, content);
+          EOF
+
+      - name: Commit and Push Changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/SECURITY.md
+          git commit -m "Update supported versions table" || echo "No changes"
+          git push
