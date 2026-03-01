@@ -68,3 +68,60 @@ def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: 
     db.commit()
     db.refresh(license_obj)
     return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at)
+
+# ------------------- AUTH ROUTES FOR CLIENTS -------------------
+
+@router.post("/auth/register-client")
+def register_client(
+    name: str,
+    email: str,
+    client_secret: str,
+    db: Session = Depends(get_db)
+):
+    existing = db.query(ClientORM).filter(ClientORM.email == email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Client already exists")
+
+    db_client = ClientORM(
+        name=name,
+        email=email,
+        secret_hash=hash_client_secret(client_secret),
+    )
+
+    db.add(db_client)
+    db.commit()
+    db.refresh(db_client)
+
+    return {"client_id": db_client.id}
+
+@router.post("/auth/client-token")
+def issue_client_token(
+    client_id: int,
+    client_secret: str,
+    license_key: str,
+    db: Session = Depends(get_db),
+):
+    client = db.query(ClientORM).filter(ClientORM.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=401, detail="Invalid client")
+
+    if client.secret_hash != hash_client_secret(client_secret):
+        raise HTTPException(status_code=401, detail="Invalid secret")
+
+    hashed_license = hash_license_key(license_key)
+    license_obj = (
+        db.query(LicenseORM)
+        .filter(LicenseORM.key_hash == hashed_license)
+        .first()
+    )
+
+    if not license_obj or license_obj.status != "active":
+        raise HTTPException(status_code=403, detail="Invalid or revoked license")
+
+    token = create_client_token(client_id=client.id, role="reader")
+
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
