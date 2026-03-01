@@ -1,78 +1,36 @@
-"""
-app/models.py
-"""
-from datetime import datetime
-from typing import Optional, List
-import hashlib
-import secrets
-import string
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum
-from sqlalchemy.orm import relationship
-from pydantic import BaseModel, EmailStr
-from app.database import Base 
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from app.routes import router
+from app.database import engine, Base
+from app import models  # IMPORTANT: ensures models are registered
+from dotenv import load_dotenv
+load_dotenv("/var/www/licenseapi/.env")
 
-def hash_license_key(key: str) -> str:
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+# Import Redis and the Limiter
+import redis.asyncio as redis
+from fastapi_limiter import FastAPILimiter
 
-def generate_license_key(length: int = 16) -> str:
-    alphabet = string.ascii_uppercase + string.digits
-    raw = "".join(secrets.choice(alphabet) for _ in range(length))
-    return "-".join(raw[i:i + 4] for i in range(0, length, 4))
-
-# --- New Utility for Client Secrets ---
-def generate_client_secret(length: int = 32) -> str:
-    """Generates a secure random string for use as a client secret."""
-    return secrets.token_urlsafe(length)
-
-class ClientORM(Base):
-    __tablename__ = "clients"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False, unique=True, index=True)
+# Define startup and shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize Redis connection for rate limiting
+    redis_connection = redis.from_url("redis://localhost:6379", encoding="utf-8", decode_responses=True)
+    await FastAPILimiter.init(redis_connection)
     
-    # --- New Fields for App Authentication ---
-    client_id = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_secret = Column(String(255), nullable=False)
-    role = Column(String(50), default="reader") 
+    yield # App runs here
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    licenses = relationship("LicenseORM", back_populates="client", cascade="all, delete-orphan")
+    # Shutdown: Close Redis connection
+    await redis_connection.close()
 
-class LicenseORM(Base):
-    __tablename__ = "licenses"
-    id = Column(Integer, primary_key=True, index=True)
-    key_hash = Column(String(64), unique=True, nullable=False, index=True)
-    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"))
-    status = Column(Enum("active", "revoked", name="license_status"), default="active", nullable=False)
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    client = relationship("ClientORM", back_populates="licenses")
+# Pass the lifespan context to FastAPI
+app = FastAPI(
+    title="License Server API",
+    description="API for license generation, validation, and revocation",
+    version="2.1.0",
+    lifespan=lifespan
+)
 
-# --- Pydantic Schemas ---
-class ClientBase(BaseModel):
-    name: str
-    email: EmailStr
-    role: Optional[str] = "reader"
+# Create tables on startup
+Base.metadata.create_all(bind=engine)
 
-class ClientCreate(ClientBase):
-    pass
-
-class ClientResponse(ClientBase):
-    id: int
-    client_id: str
-    client_secret: Optional[str] = None # Only returned once during creation
-    created_at: datetime
-    class Config:
-        from_attributes = True
-
-class LicenseBase(BaseModel):
-    client_id: int
-    expires_at: Optional[datetime] = None
-
-class License(LicenseBase):
-    id: int
-    status: str
-    created_at: datetime
-    key: Optional[str] = None 
-    class Config:
-        from_attributes = True
+app.include_router(router)
