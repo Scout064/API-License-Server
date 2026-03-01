@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from app.models import ClientBase, Client, LicenseBase, License, hash_license_key, ClientORM, LicenseORM, hash_client_secret
 from app.database import get_db
-from app.auth import require_role, create_token
+from app.auth import require_role, create_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi_limiter.depends import RateLimiter
 import secrets
 
