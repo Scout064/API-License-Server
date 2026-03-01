@@ -24,18 +24,19 @@ jobs:
           npm install semver
           node <<'EOF'
           const fs = require('fs');
+          const { execSync } = require('child_process');
           const semver = require('semver');
 
-          // Get all tags
-          const tags = require('child_process')
-            .execSync('git tag')
-            .toString()
-            .split('\n')
-            .filter(t => t && !t.includes('beta')) // exclude beta releases
-            .map(t => t.replace(/^v/, ''))
-            .sort(semver.rcompare);
+          // Get all tags (exclude beta)
+          const rawTags = execSync('git tag').toString().split('\n').filter(t => t && !t.includes('beta'));
+          const tags = rawTags.map(t => t.replace(/^v/, '')).sort(semver.rcompare);
 
-          // Determine latest patch for each minor version
+          if (!tags.length) {
+            console.log("No tags found. Table will be empty.");
+            process.exit(0);
+          }
+
+          // Determine latest patch per minor
           const latestPatch = {};
           tags.forEach(tag => {
             const key = `${semver.major(tag)}.${semver.minor(tag)}`;
@@ -54,11 +55,14 @@ jobs:
           // Update SECURITY.md
           const filePath = 'SECURITY.md';
           let content = fs.readFileSync(filePath, 'utf8');
-          content = content.replace(
-            /<!-- AUTO-GENERATED: Supported Versions Table -->[\s\S]*/,
-            `<!-- AUTO-GENERATED: Supported Versions Table -->\n${table}`
-          );
-          fs.writeFileSync(filePath, content);
+
+          // Replace the placeholder including any existing lines after it
+          content = content.replace(/<!-- AUTO-GENERATED: Supported Versions Table -->[\s\S]*/, 
+            `<!-- AUTO-GENERATED: Supported Versions Table -->\n${table}`);
+
+          fs.writeFileSync(filePath, content, 'utf8');
+          console.log("SECURITY.md updated with table:");
+          console.log(table);
           EOF
 
       - name: Commit and Push Changes
