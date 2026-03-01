@@ -52,7 +52,7 @@ jobs:
           }).join('\n');
 
           // Update SECURITY.md
-          const filePath = '.github/SECURITY.md';
+          const filePath = 'SECURITY.md';
           let content = fs.readFileSync(filePath, 'utf8');
           content = content.replace(
             /<!-- AUTO-GENERATED: Supported Versions Table -->[\s\S]*/,
