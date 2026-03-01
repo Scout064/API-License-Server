@@ -42,6 +42,19 @@ def get_client(client_id: int, db: Session = Depends(get_db), user=Depends(requi
         raise HTTPException(status_code=404, detail="Client not found")
     return db_client
 
+@router.delete("/clients/{client_id}", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def delete_client(client_id: int, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
+    db_client = db.query(ClientORM).filter(ClientORM.id == client_id).first()
+    
+    if not db_client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # This single delete command will safely cascade to the licenses table
+    db.delete(db_client)
+    db.commit()
+
+    return {"detail": f"Client {client_id} and all associated licenses successfully deleted"}
+
 # ------------------- LICENSE ROUTES -------------------
 
 @router.post("/licenses/generate", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
