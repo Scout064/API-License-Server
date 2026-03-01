@@ -47,6 +47,9 @@ def generate_license_key(length: int = 16) -> str:
     raw = "".join(secrets.choice(alphabet) for _ in range(length))
     return "-".join(raw[i:i + 4] for i in range(0, length, 4))
 
+def hash_client_secret(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
 
 # ==========================================================
 # ORM MODELS
