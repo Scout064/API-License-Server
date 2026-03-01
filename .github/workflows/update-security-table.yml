@@ -37,15 +37,17 @@ jobs:
             const releases = await response.json();
 
             if (!Array.isArray(releases) || !releases.length) {
-              console.log("No releases found or error fetching data.");
+              console.log("No releases found.");
               process.exit(0);
             }
 
-            // 2. Map latest stable version per Minor branch (e.g. 1.1.x)
-            // Only non-prereleases are eligible for "Latest Stable"
+            // 2. Pass 1: Find the absolute latest STABLE version for every Major.Minor branch
             const latestStablePerMinor = {};
+            
             releases.forEach(rel => {
               const version = rel.tag_name.replace(/^v/, '');
+              
+              // Rule: Only non-prereleases that are valid SemVer can be 'Supported'
               if (semver.valid(version) && !rel.prerelease) {
                 const key = `${semver.major(version)}.${semver.minor(version)}`;
                 if (!latestStablePerMinor[key] || semver.gt(version, latestStablePerMinor[key])) {
@@ -54,17 +56,21 @@ jobs:
               }
             });
 
-            // 3. Build the Markdown Table
+            // 3. Pass 2: Build the table rows based on your rules
             const tableRows = releases.map(rel => {
               const version = rel.tag_name.replace(/^v/, '');
-              const key = `${semver.major(version)}.${semver.minor(version)}`;
+              let status = '❌'; // Default everything to unsupported
 
-              // Logic: 
-              // - If rel.prerelease is true -> ❌
-              // - If it's NOT the latest stable patch for that minor version -> ❌
-              // - Otherwise -> ✅
-              const isSupported = !rel.prerelease && latestStablePerMinor[key] === version;
-              const status = isSupported ? '✅' : '❌';
+              // A version is ONLY supported (✅) if:
+              // - It is valid SemVer
+              // - It is NOT marked as a pre-release on GitHub
+              // - It is the latest version in its minor branch (e.g., 2.1.5 vs 2.1.4)
+              if (semver.valid(version) && !rel.prerelease) {
+                const key = `${semver.major(version)}.${semver.minor(version)}`;
+                if (latestStablePerMinor[key] === version) {
+                  status = '✅';
+                }
+              }
               
               return `| ${rel.tag_name} | ${status} |`;
             }).join('\n');
@@ -74,21 +80,22 @@ jobs:
             const content = fs.readFileSync(filePath, 'utf8');
             const placeholder = '';
 
-            // Replace everything after the placeholder with the new table
+            // This Regex ensures we replace the old table while keeping the header
+            const tableHeader = `\n| Version | Supported |\n| ------- | --------- |`;
             const newContent = content.replace(
               new RegExp(`${placeholder}[\\s\\S]*`),
-              `${placeholder}\n${tableRows}`
+              `${placeholder}${tableHeader}\n${tableRows}`
             );
 
             fs.writeFileSync(filePath, newContent, 'utf8');
-            console.log("SECURITY.md updated with Release data.");
+            console.log("Successfully updated SECURITY.md");
           }
 
           updateSecurityPolicy();
           EOF
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          
       - name: Commit and Push Changes
         run: |
           git config user.name "github-actions[bot]"
