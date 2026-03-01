@@ -82,29 +82,6 @@ def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: 
 
 # ------------------- AUTH ROUTES FOR CLIENTS -------------------
 
-@router.post("/auth/register-client")
-def register_client(
-    name: str,
-    email: str,
-    client_secret: str,
-    db: Session = Depends(get_db)
-):
-    existing = db.query(ClientORM).filter(ClientORM.email == email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Client already exists")
-
-    db_client = ClientORM(
-        name=name,
-        email=email,
-        secret_hash=hash_client_secret(client_secret),
-    )
-
-    db.add(db_client)
-    db.commit()
-    db.refresh(db_client)
-
-    return {"client_id": db_client.id}
-
 @router.post("/auth/client-token")
 def issue_client_token(
     client_id: int,
