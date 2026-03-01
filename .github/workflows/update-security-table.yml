@@ -26,41 +26,68 @@ jobs:
           const fs = require('fs');
           const semver = require('semver');
 
-          // Get all tags
-          const tags = require('child_process')
-            .execSync('git tag')
-            .toString()
-            .split('\n')
-            .filter(t => t && !t.includes('beta')) // exclude beta releases
-            .map(t => t.replace(/^v/, ''))
-            .sort(semver.rcompare);
+          async function updateSecurityPolicy() {
+            const repo = process.env.GITHUB_REPOSITORY;
+            const token = process.env.GITHUB_TOKEN;
+            
+            // 1. Fetch releases
+            const response = await fetch(`https://api.github.com/repos/${repo}/releases`, {
+              headers: { Authorization: `token ${token}` }
+            });
+            const releases = await response.json();
 
-          // Determine latest patch for each minor version
-          const latestPatch = {};
-          tags.forEach(tag => {
-            const key = `${semver.major(tag)}.${semver.minor(tag)}`;
-            if (!latestPatch[key] || semver.gt(tag, latestPatch[key])) {
-              latestPatch[key] = tag;
+            if (!Array.isArray(releases) || !releases.length) {
+              console.log("No releases found.");
+              process.exit(0);
             }
-          });
 
-          // Build markdown table
-          const table = tags.map(tag => {
-            const key = `${semver.major(tag)}.${semver.minor(tag)}`;
-            const supported = latestPatch[key] === tag ? '✅' : '❌';
-            return `| ${tag} | ${supported} |`;
-          }).join('\n');
+            // 2. Identify Latest Stable per Minor (Resilient to non-semver)
+            const latestStablePerMinor = {};
+            releases.forEach(rel => {
+              const v = rel.tag_name.replace(/^v/, '');
+              if (semver.valid(v) && !rel.prerelease) {
+                const key = `${semver.major(v)}.${semver.minor(v)}`;
+                if (!latestStablePerMinor[key] || semver.gt(v, latestStablePerMinor[key])) {
+                  latestStablePerMinor[key] = v;
+                }
+              }
+            });
 
-          // Update SECURITY.md
-          const filePath = 'SECURITY.md';
-          let content = fs.readFileSync(filePath, 'utf8');
-          content = content.replace(
-            /<!-- AUTO-GENERATED: Supported Versions Table -->[\s\S]*/,
-            `<!-- AUTO-GENERATED: Supported Versions Table -->\n${table}`
-          );
-          fs.writeFileSync(filePath, content);
+            // 3. Generate Table Rows
+            const tableRows = releases.map(rel => {
+              const v = rel.tag_name.replace(/^v/, '');
+              let status = '❌';
+
+              if (semver.valid(v) && !rel.prerelease) {
+                const key = `${semver.major(v)}.${semver.minor(v)}`;
+                if (latestStablePerMinor[key] === v) status = '✅';
+              }
+              return `| ${rel.tag_name} | ${status} |`;
+            }).join('\n');
+
+            // 4. Reconstruct the entire SECURITY.md to match your format
+            const securityContent = `# Security Policy
+
+            ## Supported Versions
+
+            | Version | Supported          |
+            | ------- | ------------------ |
+            ${tableRows}
+
+            ## Reporting a Vulnerability
+
+            Please report any security issues to [security@example.com](mailto:security@example.com).  
+            You will receive acknowledgment within 48 hours. Accepted reports will be fixed promptly and credited. Declined reports will include reasoning.`;
+
+            fs.writeFileSync('SECURITY.md', securityContent, 'utf8');
+            console.log("SECURITY.md has been reformatted and updated.");
+          }
+
+          updateSecurityPolicy();
           EOF
-
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Commit and Push Changes
         run: |
           git config user.name "github-actions[bot]"
