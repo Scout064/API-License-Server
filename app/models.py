@@ -61,6 +61,7 @@ class ClientORM(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False, unique=True, index=True)
+    secret_hash = Column(String(64), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     licenses = relationship(
