@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="License Server API",
     description="API for license generation, validation, and revocation",
-    version="2.1.1-beta.1",
+    version="2v2.1.1b-beta.1",
     lifespan=lifespan
 )
 
