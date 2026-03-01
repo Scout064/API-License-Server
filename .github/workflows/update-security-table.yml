@@ -24,57 +24,70 @@ jobs:
           npm install semver
           node <<'EOF'
           const fs = require('fs');
-          const { execSync } = require('child_process');
           const semver = require('semver');
 
-          // 1. Get ALL tags (now including beta/pre-releases)
-          const rawTags = execSync('git tag').toString().split('\n').filter(t => t.trim() !== '');
-          
-          // Sort tags using semver (handles 1.0.0-beta.1 correctly)
-          const tags = rawTags.map(t => t.replace(/^v/, '')).sort(semver.rcompare);
+          async function updateSecurityPolicy() {
+            const repo = process.env.GITHUB_REPOSITORY;
+            const token = process.env.GITHUB_TOKEN;
+            
+            // 1. Fetch releases from GitHub API
+            const response = await fetch(`https://api.github.com/repos/${repo}/releases`, {
+              headers: { Authorization: `token ${token}` }
+            });
+            const releases = await response.json();
 
-          if (!tags.length) {
-            console.log("No tags found.");
-            process.exit(0);
+            if (!Array.isArray(releases) || !releases.length) {
+              console.log("No releases found or error fetching data.");
+              process.exit(0);
+            }
+
+            // 2. Map latest stable version per Minor branch (e.g. 1.1.x)
+            // Only non-prereleases are eligible for "Latest Stable"
+            const latestStablePerMinor = {};
+            releases.forEach(rel => {
+              const version = rel.tag_name.replace(/^v/, '');
+              if (semver.valid(version) && !rel.prerelease) {
+                const key = `${semver.major(version)}.${semver.minor(version)}`;
+                if (!latestStablePerMinor[key] || semver.gt(version, latestStablePerMinor[key])) {
+                  latestStablePerMinor[key] = version;
+                }
+              }
+            });
+
+            // 3. Build the Markdown Table
+            const tableRows = releases.map(rel => {
+              const version = rel.tag_name.replace(/^v/, '');
+              const key = `${semver.major(version)}.${semver.minor(version)}`;
+
+              // Logic: 
+              // - If rel.prerelease is true -> ❌
+              // - If it's NOT the latest stable patch for that minor version -> ❌
+              // - Otherwise -> ✅
+              const isSupported = !rel.prerelease && latestStablePerMinor[key] === version;
+              const status = isSupported ? '✅' : '❌';
+              
+              return `| ${rel.tag_name} | ${status} |`;
+            }).join('\n');
+
+            // 4. Update the SECURITY.md file
+            const filePath = 'SECURITY.md';
+            const content = fs.readFileSync(filePath, 'utf8');
+            const placeholder = '';
+
+            // Replace everything after the placeholder with the new table
+            const newContent = content.replace(
+              new RegExp(`${placeholder}[\\s\\S]*`),
+              `${placeholder}\n${tableRows}`
+            );
+
+            fs.writeFileSync(filePath, newContent, 'utf8');
+            console.log("SECURITY.md updated with Release data.");
           }
 
-          // 2. Determine latest STABLE patch per minor
-          // We only consider non-prerelease versions for the "Supported" check
-          const latestStablePatch = {};
-          tags.forEach(tag => {
-            const isPrerelease = semver.prerelease(tag);
-            if (!isPrerelease) {
-              const key = `${semver.major(tag)}.${semver.minor(tag)}`;
-              if (!latestStablePatch[key] || semver.gt(tag, latestStablePatch[key])) {
-                latestStablePatch[key] = tag;
-              }
-            }
-          });
-
-          // 3. Build markdown table
-          const tableRows = tags.map(tag => {
-            const isPrerelease = semver.prerelease(tag);
-            const key = `${semver.major(tag)}.${semver.minor(tag)}`;
-            
-            // Logic: Supported if it's the latest stable patch for that minor version
-            const isSupported = !isPrerelease && latestStablePatch[key] === tag;
-            const status = isSupported ? '✅' : '❌';
-            
-            return `| ${tag} | ${status} |`;
-          }).join('\n');
-
-          // 4. Update SECURITY.md
-          const filePath = 'SECURITY.md';
-          let content = fs.readFileSync(filePath, 'utf8');
-
-          const placeholder = '';
-          const regex = new RegExp(`${placeholder}[\\s\\S]*`);
-          
-          content = content.replace(regex, `${placeholder}\n${tableRows}`);
-
-          fs.writeFileSync(filePath, content, 'utf8');
-          console.log("SECURITY.md updated.");
+          updateSecurityPolicy();
           EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit and Push Changes
         run: |
