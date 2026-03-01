@@ -114,6 +114,7 @@ class ClientCreate(ClientBase):
 class Client(ClientBase):
     id: int
     created_at: datetime
+    client_secret: Optional[str] = None
 
     class Config:
         from_attributes = True
