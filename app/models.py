@@ -1,36 +1,140 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from app.routes import router
-from app.database import engine, Base
-from app import models  # IMPORTANT: ensures models are registered
-from dotenv import load_dotenv
-load_dotenv("/var/www/licenseapi/.env")
+"""
+app/models.py
 
-# Import Redis and the Limiter
-import redis.asyncio as redis
-from fastapi_limiter import FastAPILimiter
+Database ORM models and Pydantic schemas.
+Implements secure license key hashing and generation.
+"""
 
-# Define startup and shutdown events
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Initialize Redis connection for rate limiting
-    redis_connection = redis.from_url("redis://localhost:6379", encoding="utf-8", decode_responses=True)
-    await FastAPILimiter.init(redis_connection)
-    
-    yield # App runs here
-    
-    # Shutdown: Close Redis connection
-    await redis_connection.close()
+from datetime import datetime
+from typing import Optional, List
 
-# Pass the lifespan context to FastAPI
-app = FastAPI(
-    title="License Server API",
-    description="API for license generation, validation, and revocation",
-    version="2.1.0",
-    lifespan=lifespan
+import hashlib
+import secrets
+import string
+
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+    Enum,
 )
+from sqlalchemy.orm import relationship # Removed declarative_base from here
 
-# Create tables on startup
-Base.metadata.create_all(bind=engine)
+from pydantic import BaseModel, EmailStr
 
-app.include_router(router)
+# CRITICAL FIX: Import Base from database.py instead of creating a new one
+from app.database import Base 
+
+# ==========================================================
+# Utility Functions
+# ==========================================================
+
+def hash_license_key(key: str) -> str:
+    """
+    Hash license key using SHA-256.
+    Only hashed values are stored in DB.
+    """
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def generate_license_key(length: int = 16) -> str:
+    """
+    Generate secure license key formatted XXXX-XXXX-XXXX-XXXX.
+    """
+    alphabet = string.ascii_uppercase + string.digits
+    raw = "".join(secrets.choice(alphabet) for _ in range(length))
+    return "-".join(raw[i:i + 4] for i in range(0, length, 4))
+
+
+# ==========================================================
+# ORM MODELS
+# ==========================================================
+
+class ClientORM(Base):
+    """
+    Database model for API clients.
+    """
+    __tablename__ = "clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    licenses = relationship(
+        "LicenseORM",
+        back_populates="client",
+        cascade="all, delete-orphan"
+    )
+
+
+class LicenseORM(Base):
+    """
+    Database model for licenses.
+    Stores only hashed license keys.
+    """
+    __tablename__ = "licenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key_hash = Column(String(64), unique=True, nullable=False, index=True)
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"))
+    status = Column(
+        Enum("active", "revoked", name="license_status"),
+        default="active",
+        nullable=False,
+    )
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("ClientORM", back_populates="licenses")
+
+
+# ==========================================================
+# Pydantic Schemas
+# ==========================================================
+
+# -------- Clients --------
+
+class ClientBase(BaseModel):
+    name: str
+    email: EmailStr
+
+
+class ClientCreate(ClientBase):
+    pass
+
+
+class Client(ClientBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# -------- Licenses --------
+
+class LicenseBase(BaseModel):
+    client_id: int
+    expires_at: Optional[datetime] = None
+
+
+class LicenseCreate(LicenseBase):
+    pass
+
+
+class License(LicenseBase):
+    id: int
+    status: str
+    created_at: datetime
+    key: Optional[str] = None  # returned only on generation
+
+    class Config:
+        from_attributes = True
+
+
+class LicenseStatus(BaseModel):
+    status: str
