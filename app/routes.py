@@ -14,7 +14,9 @@ LICENSE_KEY_REGEX = r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$'
 
 @router.post("/clients", response_model=Client, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
 def create_client(client: ClientBase, db: Session = Depends(get_db), user=Depends(require_role("admin"))):
-    db_client = ClientORM(name=client.name, email=client.email)
+    # Required because secret_hash is NOT NULL
+    raw_secret = secrets.token_hex(32)
+    db_client = ClientORM(name=client.name, email=client.email, secret_hash=hash_client_secret(raw_secret))
     db.add(db_client)
     db.commit()
     db.refresh(db_client)
