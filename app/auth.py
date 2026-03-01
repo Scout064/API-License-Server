@@ -3,6 +3,7 @@ import jwt
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.models import ClientORM, hash_client_secret
 
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
