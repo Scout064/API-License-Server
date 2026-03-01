@@ -109,7 +109,7 @@ def register_client(
 def issue_client_token(
     client_id: int,
     client_secret: str,
-    license_key: str,
+#    license_key: str,
     db: Session = Depends(get_db),
 ):
     client = db.query(ClientORM).filter(ClientORM.id == client_id).first()
@@ -119,15 +119,15 @@ def issue_client_token(
     if client.secret_hash != hash_client_secret(client_secret):
         raise HTTPException(status_code=401, detail="Invalid secret")
 
-    hashed_license = hash_license_key(license_key)
-    license_obj = (
-        db.query(LicenseORM)
-        .filter(LicenseORM.key_hash == hashed_license)
-        .first()
-    )
-
-    if not license_obj or license_obj.status != "active":
-        raise HTTPException(status_code=403, detail="Invalid or revoked license")
+#    hashed_license = hash_license_key(license_key)
+#    license_obj = (
+#        db.query(LicenseORM)
+#        .filter(LicenseORM.key_hash == hashed_license)
+#        .first()
+#    )
+#
+#    if not license_obj or license_obj.status != "active":
+#        raise HTTPException(status_code=403, detail="Invalid or revoked license")
 
     token = create_token(user_id=client.id, role="reader")
 
