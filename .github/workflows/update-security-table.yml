@@ -27,42 +27,53 @@ jobs:
           const { execSync } = require('child_process');
           const semver = require('semver');
 
-          // Get all tags (exclude beta)
-          const rawTags = execSync('git tag').toString().split('\n').filter(t => t && !t.includes('beta'));
+          // 1. Get ALL tags (now including beta/pre-releases)
+          const rawTags = execSync('git tag').toString().split('\n').filter(t => t.trim() !== '');
+          
+          // Sort tags using semver (handles 1.0.0-beta.1 correctly)
           const tags = rawTags.map(t => t.replace(/^v/, '')).sort(semver.rcompare);
 
           if (!tags.length) {
-            console.log("No tags found. Table will be empty.");
+            console.log("No tags found.");
             process.exit(0);
           }
 
-          // Determine latest patch per minor
-          const latestPatch = {};
+          // 2. Determine latest STABLE patch per minor
+          // We only consider non-prerelease versions for the "Supported" check
+          const latestStablePatch = {};
           tags.forEach(tag => {
-            const key = `${semver.major(tag)}.${semver.minor(tag)}`;
-            if (!latestPatch[key] || semver.gt(tag, latestPatch[key])) {
-              latestPatch[key] = tag;
+            const isPrerelease = semver.prerelease(tag);
+            if (!isPrerelease) {
+              const key = `${semver.major(tag)}.${semver.minor(tag)}`;
+              if (!latestStablePatch[key] || semver.gt(tag, latestStablePatch[key])) {
+                latestStablePatch[key] = tag;
+              }
             }
           });
 
-          // Build markdown table
-          const table = tags.map(tag => {
+          // 3. Build markdown table
+          const tableRows = tags.map(tag => {
+            const isPrerelease = semver.prerelease(tag);
             const key = `${semver.major(tag)}.${semver.minor(tag)}`;
-            const supported = latestPatch[key] === tag ? '✅' : '❌';
-            return `| ${tag} | ${supported} |`;
+            
+            // Logic: Supported if it's the latest stable patch for that minor version
+            const isSupported = !isPrerelease && latestStablePatch[key] === tag;
+            const status = isSupported ? '✅' : '❌';
+            
+            return `| ${tag} | ${status} |`;
           }).join('\n');
 
-          // Update SECURITY.md
+          // 4. Update SECURITY.md
           const filePath = 'SECURITY.md';
           let content = fs.readFileSync(filePath, 'utf8');
 
-          // Replace the placeholder including any existing lines after it
-          content = content.replace(/<!-- AUTO-GENERATED: Supported Versions Table -->[\s\S]*/, 
-            `<!-- AUTO-GENERATED: Supported Versions Table -->\n${table}`);
+          const placeholder = '';
+          const regex = new RegExp(`${placeholder}[\\s\\S]*`);
+          
+          content = content.replace(regex, `${placeholder}\n${tableRows}`);
 
           fs.writeFileSync(filePath, content, 'utf8');
-          console.log("SECURITY.md updated with table:");
-          console.log(table);
+          console.log("SECURITY.md updated.");
           EOF
 
       - name: Commit and Push Changes
