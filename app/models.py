@@ -103,7 +103,7 @@ class LicenseORM(Base):
         default="active",
         nullable=False,
     )
-    expires_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     client = relationship("ClientORM", back_populates="licenses")
