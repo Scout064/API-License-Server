@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 from app.models import ClientBase, Client, LicenseBase, License, hash_license_key, ClientORM, LicenseORM, hash_client_secret
 from app.database import get_db
