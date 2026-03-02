@@ -2,6 +2,7 @@ CREATE TABLE clients (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
+    secret_hash CHAR(64) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -16,3 +17,4 @@ CREATE TABLE licenses (
 );
 
 CREATE INDEX idx_license_hash ON licenses(key_hash);
+CREATE INDEX idx_license_client ON licenses(client_id);

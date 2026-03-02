@@ -57,8 +57,9 @@ def test_generate_license(client, admin_headers):
     c_resp = client.post("/clients", json={"name": "Gen Client", "email": "gen@example.com"}, headers=admin_headers)
     client_id = c_resp.json()["id"]
     
-    # Action: Generate license
-    response = client.post(f"/licenses/generate?client_id={client_id}", headers=admin_headers)
+    # Action: Generate license (Added &expiry=1_month)
+    response = client.post(f"/licenses/generate?client_id={client_id}&expiry=1_month", headers=admin_headers)
+    
     assert response.status_code == 200
     assert "key" in response.json()
     assert response.json()["status"] == "active"
@@ -68,7 +69,9 @@ def test_validate_license(client, admin_headers, reader_headers):
     # Setup: Create client -> Generate license
     c_resp = client.post("/clients", json={"name": "Val Client", "email": "val@example.com"}, headers=admin_headers)
     client_id = c_resp.json()["id"]
-    gen_resp = client.post(f"/licenses/generate?client_id={client_id}", headers=admin_headers)
+    
+    # Added &expiry=1_month
+    gen_resp = client.post(f"/licenses/generate?client_id={client_id}&expiry=1_month", headers=admin_headers)
     real_key = gen_resp.json()["key"]
 
     # Action: Validate (Requires reader role)
@@ -82,7 +85,9 @@ def test_revoke_license(client, admin_headers):
     # Setup: Create client -> Generate license
     c_resp = client.post("/clients", json={"name": "Rev Client", "email": "rev@example.com"}, headers=admin_headers)
     client_id = c_resp.json()["id"]
-    gen_resp = client.post(f"/licenses/generate?client_id={client_id}", headers=admin_headers)
+    
+    # Added &expiry=1_month
+    gen_resp = client.post(f"/licenses/generate?client_id={client_id}&expiry=1_month", headers=admin_headers)
     real_key = gen_resp.json()["key"]
 
     # Action: Revoke

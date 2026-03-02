@@ -5,7 +5,7 @@ Database ORM models and Pydantic schemas.
 Implements secure license key hashing and generation.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 
 import hashlib
@@ -47,6 +47,22 @@ def generate_license_key(length: int = 16) -> str:
     raw = "".join(secrets.choice(alphabet) for _ in range(length))
     return "-".join(raw[i:i + 4] for i in range(0, length, 4))
 
+def hash_client_secret(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+def calculate_expiry(expiry: str) -> datetime:
+    """
+    Calculate expiry date based on option.
+    """
+    now = datetime.utcnow()
+    if expiry == "1_month":
+        return now + timedelta(days=30)
+    if expiry == "1_year":
+        return now + timedelta(days=365)
+    if expiry == "2_year":
+        return now + timedelta(days=730)
+    raise HTTPException(status_code=400, detail="Invalid expiry option")
+
 
 # ==========================================================
 # ORM MODELS
@@ -61,6 +77,7 @@ class ClientORM(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False, unique=True, index=True)
+    secret_hash = Column(String(64), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     licenses = relationship(
@@ -86,7 +103,7 @@ class LicenseORM(Base):
         default="active",
         nullable=False,
     )
-    expires_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     client = relationship("ClientORM", back_populates="licenses")
@@ -110,6 +127,7 @@ class ClientCreate(ClientBase):
 class Client(ClientBase):
     id: int
     created_at: datetime
+    client_secret: Optional[str] = None
 
     class Config:
         from_attributes = True
