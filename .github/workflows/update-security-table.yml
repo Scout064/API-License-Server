@@ -95,3 +95,4 @@ jobs:
           git add SECURITY.md
           git commit -m "Update supported versions table" || echo "No changes"
           git push "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:main
+          git push "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:Beta

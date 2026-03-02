@@ -91,7 +91,7 @@ def validate_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db
     license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found")
-    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at)
+    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at, expires_at=license_obj.expires_at)
 
 @router.post("/licenses/{license_key}/revoke", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
 def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: Session = Depends(get_db), user=Depends(require_role("admin"))):
@@ -102,7 +102,7 @@ def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: 
     license_obj.status = 'revoked'
     db.commit()
     db.refresh(license_obj)
-    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at)
+    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at, expires_at=license_obj.expires_at)
 
 # ------------------- AUTH ROUTES FOR CLIENTS -------------------
 
