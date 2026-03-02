@@ -7,6 +7,8 @@ Implements secure license key hashing and generation.
 
 from datetime import datetime
 from typing import Optional, List
+from enum import Enum
+from pydantic import BaseModel
 
 import hashlib
 import secrets
