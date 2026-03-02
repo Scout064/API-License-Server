@@ -5,7 +5,7 @@ Database ORM models and Pydantic schemas.
 Implements secure license key hashing and generation.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 
 import hashlib
@@ -49,6 +49,19 @@ def generate_license_key(length: int = 16) -> str:
 
 def hash_client_secret(secret: str) -> str:
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+def calculate_expiry(expiry: str) -> datetime:
+    """
+    Calculate expiry date based on option.
+    """
+    now = datetime.utcnow()
+    if expiry == "1_month":
+        return now + timedelta(days=30)
+    if expiry == "1_year":
+        return now + timedelta(days=365)
+    if expiry == "2_year":
+        return now + timedelta(days=730)
+    raise HTTPException(status_code=400, detail="Invalid expiry option")
 
 
 # ==========================================================
