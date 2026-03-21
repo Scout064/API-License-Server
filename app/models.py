@@ -150,6 +150,7 @@ class License(LicenseBase):
     status: str
     created_at: datetime
     key: Optional[str] = None  # returned only on generation
+    instance_id: str
 
     class Config:
         from_attributes = True
