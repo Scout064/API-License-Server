@@ -86,7 +86,7 @@ def generate_license(client_id: int, expiry: ExpiryOption = Query(..., descripti
     return License(id=db_license.id, client_id=client_id, status=db_license.status, key=key_fmt, created_at=db_license.created_at, expires_at=db_license.expires_at)
 
 @router.get("/licenses/{license_key}", response_model=License, dependencies=[Depends(RateLimiter(times=10, seconds=60))])
-def validate_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: Session = Depends(get_db), user=Depends(require_role("reader"))):
+def validate_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), instance_id: Optional[str] = Query(None), db: Session = Depends(get_db), user=Depends(require_role("reader"))):
     hashed = hash_license_key(license_key)
     license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
     if not license_obj:
