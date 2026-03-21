@@ -86,13 +86,33 @@ def generate_license(client_id: int, expiry: ExpiryOption = Query(..., descripti
     
     return License(id=db_license.id, client_id=client_id, status=db_license.status, key=key_fmt, created_at=db_license.created_at, expires_at=db_license.expires_at)
 
+
 @router.get("/licenses/{license_key}", response_model=License, dependencies=[Depends(RateLimiter(times=10, seconds=60))])
-def validate_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), instance_id: Optional[str] = Query(None), db: Session = Depends(get_db), user=Depends(require_role("reader"))):
+def validate_license(
+    license_key: str = Path(..., pattern=LICENSE_KEY_REGEX),
+    instance_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user=Depends(require_role("reader"))
+):
     hashed = hash_license_key(license_key)
     license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found")
-    return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at, expires_at=license_obj.expires_at, instance_id=license_obj.instance_id)
+    # Check if instance_id was received AND the database currently has no instance_id
+    if instance_id and license_obj.instance_id is None:
+        license_obj.instance_id = instance_id
+        db.commit()
+        db.refresh(license_obj)
+    return License(
+        id=license_obj.id,
+        client_id=license_obj.client_id,
+        status=license_obj.status,
+        key=license_key,
+        created_at=license_obj.created_at,
+        expires_at=license_obj.expires_at,
+        instance_id=license_obj.instance_id
+    )
+
 
 @router.post("/licenses/{license_key}/revoke", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
 def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: Session = Depends(get_db), user=Depends(require_role("admin"))):
