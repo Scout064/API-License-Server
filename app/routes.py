@@ -7,6 +7,7 @@ from app.enums import ExpiryOption
 from fastapi_limiter.depends import RateLimiter
 from datetime import datetime, timedelta
 import secrets
+from typing import Optional
 
 router = APIRouter()
 
