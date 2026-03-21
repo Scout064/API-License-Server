@@ -13,6 +13,7 @@ CREATE TABLE licenses (
     status ENUM('active', 'revoked') DEFAULT 'active',
     expires_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    instance_id VARCHAR(64),
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
