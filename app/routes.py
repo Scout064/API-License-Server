@@ -125,6 +125,47 @@ def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: 
     db.refresh(license_obj)
     return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at, expires_at=license_obj.expires_at)
 
+
+@router.delete("/licenses/{license_key}/unbind", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def unbind_license_instance(
+    license_key: str = Path(..., pattern=LICENSE_KEY_REGEX),
+    db: Session = Depends(get_db),
+    user=Depends(require_role("reader")),
+):
+    """
+    Remove the instance_id binding from a license.
+ 
+    Authentication: Bearer token obtained via POST /auth/client-token
+    (exchange your client_id + client_secret for a short-lived JWT).
+ 
+    Clients may only unbind their own licenses.
+    Admins may unbind any license.
+    """
+    hashed = hash_license_key(license_key)
+    license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
+    if not license_obj:
+        raise HTTPException(status_code=404, detail="License not found")
+    # Ownership check: readers may only unbind their own licenses.
+    # Admins (role level 3) bypass this check.
+    requesting_client_id = int(user["sub"])
+    is_admin = user.get("role") == "admin"
+    if not is_admin and license_obj.client_id != requesting_client_id:
+        raise HTTPException(status_code=403, detail="You do not own this license")
+    if license_obj.instance_id is None:
+        raise HTTPException(status_code=409, detail="License is not bound to any instance")
+    license_obj.instance_id = None
+    db.commit()
+    db.refresh(license_obj)
+    return License(
+        id=license_obj.id,
+        client_id=license_obj.client_id,
+        status=license_obj.status,
+        key=license_key,
+        created_at=license_obj.created_at,
+        expires_at=license_obj.expires_at,
+        instance_id=None,
+    )
+
 # ------------------- AUTH ROUTES FOR CLIENTS -------------------
 
 @router.post("/auth/client-token")
