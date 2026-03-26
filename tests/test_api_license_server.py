@@ -94,3 +94,95 @@ def test_revoke_license(client, admin_headers):
     response = client.post(f"/licenses/{real_key}/revoke", headers=admin_headers)
     assert response.status_code == 200
     assert response.json()["status"] == "revoked"
+
+# ==========================================
+# UNBIND ROUTE
+# ==========================================
+ 
+def test_unbind_license_clears_instance_id(client, admin_headers, make_reader_headers):
+    """Owner client can unbind their own license's instance_id."""
+    # Setup: create client, generate license, bind an instance
+    c_resp = client.post("/clients", json={"name": "Unbind Client", "email": "unbind@example.com"}, headers=admin_headers)
+    client_id = c_resp.json()["id"]
+    reader_headers = make_reader_headers(client_id)
+ 
+    gen_resp = client.post(f"/licenses/generate?client_id={client_id}&expiry=1_month", headers=admin_headers)
+    real_key = gen_resp.json()["key"]
+ 
+    # Bind an instance_id via GET validate
+    client.get(f"/licenses/{real_key}?instance_id=my-machine-001", headers=reader_headers)
+ 
+    # Confirm it's bound
+    bound = client.get(f"/licenses/{real_key}", headers=reader_headers).json()
+    assert bound["instance_id"] == "my-machine-001"
+ 
+    # Action: unbind
+    response = client.delete(f"/licenses/{real_key}/unbind", headers=reader_headers)
+    assert response.status_code == 200
+    assert response.json()["instance_id"] is None
+ 
+ 
+def test_unbind_license_not_bound_returns_409(client, admin_headers, make_reader_headers):
+    """Returns 409 if the license has no instance_id to unbind."""
+    c_resp = client.post("/clients", json={"name": "No Bind Client", "email": "nobind@example.com"}, headers=admin_headers)
+    client_id = c_resp.json()["id"]
+    reader_headers = make_reader_headers(client_id)
+ 
+    gen_resp = client.post(f"/licenses/generate?client_id={client_id}&expiry=1_month", headers=admin_headers)
+    real_key = gen_resp.json()["key"]
+ 
+    response = client.delete(f"/licenses/{real_key}/unbind", headers=reader_headers)
+    assert response.status_code == 409
+    assert "not bound" in response.json()["detail"]
+ 
+ 
+def test_unbind_license_wrong_owner_returns_403(client, admin_headers, make_reader_headers):
+    """A client cannot unbind a license that belongs to a different client."""
+    # Client A owns the license
+    c_a = client.post("/clients", json={"name": "Client A", "email": "a@example.com"}, headers=admin_headers).json()
+    client_a_headers = make_reader_headers(c_a["id"])
+ 
+    gen_resp = client.post(f"/licenses/generate?client_id={c_a['id']}&expiry=1_month", headers=admin_headers)
+    real_key = gen_resp.json()["key"]
+ 
+    # Bind an instance so unbind has something to do
+    client.get(f"/licenses/{real_key}?instance_id=machine-abc", headers=client_a_headers)
+ 
+    # Client B tries to unbind Client A's license
+    c_b = client.post("/clients", json={"name": "Client B", "email": "b@example.com"}, headers=admin_headers).json()
+    client_b_headers = make_reader_headers(c_b["id"])
+ 
+    response = client.delete(f"/licenses/{real_key}/unbind", headers=client_b_headers)
+    assert response.status_code == 403
+    assert "do not own" in response.json()["detail"]
+ 
+ 
+def test_unbind_license_admin_can_unbind_any(client, admin_headers, make_reader_headers):
+    """Admin role can unbind any license regardless of ownership."""
+    c_resp = client.post("/clients", json={"name": "Admin Target", "email": "admintgt@example.com"}, headers=admin_headers)
+    client_id = c_resp.json()["id"]
+    reader_headers = make_reader_headers(client_id)
+ 
+    gen_resp = client.post(f"/licenses/generate?client_id={client_id}&expiry=1_month", headers=admin_headers)
+    real_key = gen_resp.json()["key"]
+ 
+    client.get(f"/licenses/{real_key}?instance_id=some-machine", headers=reader_headers)
+ 
+    # Admin unbinds (admin JWT has no matching sub, but is_admin bypasses the check)
+    response = client.delete(f"/licenses/{real_key}/unbind", headers=admin_headers)
+    assert response.status_code == 200
+    assert response.json()["instance_id"] is None
+ 
+ 
+def test_unbind_license_not_found_returns_404(client, admin_headers, make_reader_headers):
+    """Returns 404 for a well-formatted but non-existent license key."""
+    headers = make_reader_headers(1)
+    response = client.delete("/licenses/AAAA-BBBB-CCCC-DDDD/unbind", headers=headers)
+    assert response.status_code == 404
+ 
+ 
+def test_unbind_requires_authentication(client):
+    """Returns 403 when no Bearer token is supplied."""
+    response = client.delete("/licenses/AAAA-BBBB-CCCC-DDDD/unbind")
+    assert response.status_code == 403
+ 
