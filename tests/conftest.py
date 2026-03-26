@@ -79,6 +79,18 @@ def generate_test_headers(role: str):
     token = jwt.encode(payload, secret, algorithm="HS256")
     return {"Authorization": f"Bearer {token}"}
 
+
+def generate_client_headers(role: str, client_id: int):
+    """Generate headers with 'sub' set to a specific client_id (matches create_token)."""
+    secret = os.getenv("JWT_SECRET", "test_jwt_secret")
+    payload = {
+        "sub": str(client_id),
+        "role": role,
+        "exp": datetime.utcnow() + timedelta(hours=1),
+    }
+    token = jwt.encode(payload, secret, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
+
 @pytest.fixture()
 def admin_headers():
     return generate_test_headers("admin")
@@ -90,3 +102,10 @@ def reader_headers():
 @pytest.fixture()
 def user_headers():
     return generate_test_headers("user")
+
+@pytest.fixture()
+def make_reader_headers():
+    """Factory fixture: returns reader headers scoped to a specific client_id."""
+    def _make(client_id: int):
+        return generate_client_headers("reader", client_id)
+    return _make
