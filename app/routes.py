@@ -126,6 +126,50 @@ def revoke_license(license_key: str = Path(..., pattern=LICENSE_KEY_REGEX), db: 
     return License(id=license_obj.id, client_id=license_obj.client_id, status=license_obj.status, key=license_key, created_at=license_obj.created_at, expires_at=license_obj.expires_at)
 
 
+@router.post("/licenses/{license_key}/extend", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def extend_license(
+    license_key: str = Path(..., pattern=LICENSE_KEY_REGEX),
+    expiry: ExpiryOption = Query(..., description="Duration to add to the current expiry (1_month, 1_year, 2_year)"),
+    db: Session = Depends(get_db),
+    user=Depends(require_role("admin")),
+):
+    """
+    Extend a license's expiry date by a fixed duration.
+
+    The duration is added to the license's *current* expires_at, not to today,
+    so remaining time is always preserved (e.g. extending a license with 6 months
+    left by 1_year results in 18 months remaining, not 12).
+
+    Works on both active and revoked licenses.
+    Requires admin role.
+    """
+    hashed = hash_license_key(license_key)
+    license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
+
+    if not license_obj:
+        raise HTTPException(status_code=404, detail="License not found")
+
+    EXPIRY_DELTAS = {
+        ExpiryOption.one_month: timedelta(days=30),
+        ExpiryOption.one_year:  timedelta(days=365),
+        ExpiryOption.two_year:  timedelta(days=730),
+    }
+
+    license_obj.expires_at = license_obj.expires_at + EXPIRY_DELTAS[expiry]
+    db.commit()
+    db.refresh(license_obj)
+
+    return License(
+        id=license_obj.id,
+        client_id=license_obj.client_id,
+        status=license_obj.status,
+        key=license_key,
+        created_at=license_obj.created_at,
+        expires_at=license_obj.expires_at,
+        instance_id=license_obj.instance_id,
+    )
+
+
 @router.delete("/licenses/{license_key}/unbind", response_model=License, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
 def unbind_license_instance(
     license_key: str = Path(..., pattern=LICENSE_KEY_REGEX),
@@ -134,28 +178,33 @@ def unbind_license_instance(
 ):
     """
     Remove the instance_id binding from a license.
- 
+
     Authentication: Bearer token obtained via POST /auth/client-token
     (exchange your client_id + client_secret for a short-lived JWT).
- 
+
     Clients may only unbind their own licenses.
     Admins may unbind any license.
     """
     hashed = hash_license_key(license_key)
     license_obj = db.query(LicenseORM).filter(LicenseORM.key_hash == hashed).first()
+
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found")
+
     # Ownership check: readers may only unbind their own licenses.
     # Admins (role level 3) bypass this check.
     requesting_client_id = int(user["sub"])
     is_admin = user.get("role") == "admin"
     if not is_admin and license_obj.client_id != requesting_client_id:
         raise HTTPException(status_code=403, detail="You do not own this license")
+
     if license_obj.instance_id is None:
         raise HTTPException(status_code=409, detail="License is not bound to any instance")
+
     license_obj.instance_id = None
     db.commit()
     db.refresh(license_obj)
+
     return License(
         id=license_obj.id,
         client_id=license_obj.client_id,
